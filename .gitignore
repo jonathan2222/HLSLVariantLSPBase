@@ -4,6 +4,8 @@ hlslvariant/node_modules/
 server/externals/
 server/Build/
 
+server/src/tree_sitter_cpp
+
 .vs
 
 *.sln
