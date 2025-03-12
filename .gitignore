@@ -1,0 +1,11 @@
+hlslvariant/out/
+hlslvariant/node_modules/
+
+server/externals/
+server/Build/
+
+.vs
+
+*.sln
+*.vcxproj
+*.vcxproj.*
