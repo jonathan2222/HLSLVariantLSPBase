@@ -2,6 +2,8 @@
 
 This was developed on a windows machine, thus focused on the windows platform.
 
+Below are instructions on how to setup the project but also what steps was made from the start of the project. Hope this can help the one reading this to get started without going through the pain I did :D 
+
 ## Setup VSCode Extension from scratch
 
 1. Update node to latest and npm to latest
