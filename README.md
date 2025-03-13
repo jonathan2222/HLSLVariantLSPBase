@@ -79,8 +79,15 @@ Below are instructions on how to setup the project but also what steps was made 
 
 ## Debug server
 
+### Visual Studio
+
 1. Compile the `HLSLVServer` project in `Debug`.
 2. Open the folder `hlslvariant` in VS Code.
 3. Press **F5**
 4. Open `server/HLSLVariantLSPServer.sln` and press Debug -> Attach to Process..
     Search for **HLSLVServer** and attach.
+
+### Logs
+
+1. Use lsp::notifications::Window_LogMessage to send messages to the client.
+2. Can be seen in the output with the same name as the one given to `LanguageClient` in `extension.ts`

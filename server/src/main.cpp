@@ -22,6 +22,15 @@ void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& messag
 }
 #define SendMessage(msg) _SendMessage(messageHandler, msg)
 
+void _SendLog(lsp::MessageHandler& messageHandler, const std::string& message)
+{
+    lsp::LogMessageParams messageParams;
+    messageParams.type = lsp::MessageType::Info;
+    messageParams.message = message;
+    messageHandler.messageDispatcher().sendNotification<lsp::notifications::Window_LogMessage>(lsp::notifications::Window_LogMessage::Params{ messageParams });
+}
+#define SendLog(msg) _SendLog(messageHandler, msg)
+
 TSParser* g_pParser = nullptr;
 
 void InitTreeSitter()
@@ -82,6 +91,11 @@ int main()
                 lsp::TextDocumentContentChangeEvent_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Text>(params.contentChanges[0]);
                 TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, textEvent.text.c_str(), textEvent.text.size());
 
+                TSNode rootNode = ts_tree_root_node(pTree);
+                char* pString = ts_node_string(rootNode);
+                std::string msg = pString;
+                SendLog(msg);
+                free(pString);
                 ts_tree_delete(pTree);
             })
         .add<lsp::notifications::TextDocument_DidClose>([&messageHandler](lsp::DidCloseTextDocumentParams&& params)
