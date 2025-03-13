@@ -1,4 +1,7 @@
-# Setup
+# Template for a HLSL variant language VSCode extension
+
+This is a template for creating a VSCode extension for a variant of HLSL. It is using the Language Server Protocol (LSP) to communicate with vscode client and the server.
+Tree sitter is used for creating the AST of each file.
 
 This was developed on a windows machine, thus focused on the windows platform.
 
