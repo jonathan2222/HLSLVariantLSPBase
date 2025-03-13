@@ -1,0 +1,38 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "hlslvparser",
+      "camelcase": "HLSLVParser",
+      "title": "HLSLV Parser",
+      "scope": "source.hlslvparser",
+      "file-types": [
+        "hlslvparser"
+      ],
+      "injection-regex": "^hlslvparser$",
+      "class-name": "TreeSitterHlslvparser"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Hlslvparser grammar for tree-sitter",
+    "authors": [
+      {
+        "name": "Jonathan Åleskog"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/tree-sitter/tree-sitter-hlslvparser"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "node": true,
+    "python": false,
+    "rust": true,
+    "swift": false,
+    "zig": false
+  }
+}

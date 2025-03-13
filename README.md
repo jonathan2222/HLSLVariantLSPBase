@@ -46,6 +46,24 @@ Below are instructions on how to setup the project but also what steps was made 
 2. Make sure you have `vsce` installed. If not run `npm install -g @vscode/vsce`.
 3. Run `PackageExtension.bat` *Note: Remember to increase the `version` value in `package.json`*
 
+## Creating a language using tree-sitter
+
+1. Create the folder `server/language/tree-sitter-hlslv` and step into it.
+2. Install tree-sitter by running `npm install -g tree-sitter-cli`. This will create the tree-sitter command globaly.
+3. Run `tree-sitter init`. Fill out the fields after which it will have created the necessary files.
+4. Run `tree-sitter generate`. This should generate the parser from the grammar in `grammar.js`.
+5. Try the grammar by running these commands:
+    `'hello' | Out-File example-file.hlslv -Encoding utf8`
+    `tree-sitter example-file.hlslv`
+    If you get an error that the the parser directories was not configured. Do this:
+    Run `tree-sitter init-config` open the file that was generated and add the path to the directory `tree-sitter-hlslv` inside of `parser-directories`.
+
+### Other issues that can be solved
+
+#### Linter errors in grammar.js
+
+Can be fixed by running `npm install` combined with `tree-sitter init` if you are missing some bindings etc.
+
 ## Setup VSCode Extension from scratch
 
 <details>
