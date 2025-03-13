@@ -2,7 +2,12 @@
 
 This was developed on a windows machine, thus focused on the windows platform.
 
-Below are instructions on how to setup the project but also what steps was made from the start of the project. Hope this can help the one reading this to get started without going through the pain I did :D 
+Below are instructions on how to setup the project but also what steps was made from the start of the project. Hope this can help you who reads this to get started without going through the pain I did :D 
+
+**Dependencies:** `npm`, `cmake`, `msbuild`, `Visual Studio 2022`
+**Platform:** `windows`
+
+* **Visual Studio 2022** is only needed for **PremakeVS2022.bat**, if you have another version, just change it inside that bat file.
 
 ## Build and compile server
 
@@ -24,8 +29,8 @@ Below are instructions on how to setup the project but also what steps was made 
 1. Compile the `HLSLVServer` project in `Debug`.
 2. Open the folder `hlslvariant` in VS Code.
 3. Press **F5**
-4. Open `server/HLSLVariantLSPServer.sln` and press Debug -> Attach to Process..
-    Search for **HLSLVServer** and attach.
+4. Open `server/HLSLVariantLSPServer.sln` and press `Debug` -> `Attach to Process..`
+    Search for `HLSLVServer` and attach.
 
 ### Logs
 
