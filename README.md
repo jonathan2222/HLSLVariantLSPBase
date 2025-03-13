@@ -51,7 +51,7 @@ Below are instructions on how to setup the project but also what steps was made 
 1. Create the folder `server/language/tree-sitter-hlslv` and step into it.
 2. Install tree-sitter by running `npm install -g tree-sitter-cli`. This will create the tree-sitter command globaly.
 3. Run `tree-sitter init`. Fill out the fields after which it will have created the necessary files.
-4. Run `tree-sitter generate`. This should generate the parser from the grammar in `grammar.js`.
+4. Run `tree-sitter generate --log`. This should generate the parser from the grammar in `grammar.js`.
 5. Try the grammar by running these commands:
     `'hello' | Out-File example-file.hlslv -Encoding utf8`
     `tree-sitter example-file.hlslv`
@@ -63,6 +63,24 @@ Below are instructions on how to setup the project but also what steps was made 
 #### Linter errors in grammar.js
 
 Can be fixed by running `npm install` combined with `tree-sitter init` if you are missing some bindings etc.
+
+#### If you see errors like *unresolved external symbol tree_sitter_hlslvparser_external_scanner_create HLSLVServer ..*
+
+It is missing an external scanner. This is the file `src/scanner.c` in the `tree-sitter-cpp` repository.
+Copy that file into our src and rename the functions to the correct names.
+
+#### Inherit language grammar from CPP
+
+Add the below code in `devDependencies` inside `tree-sitter-hlslv/package.json`
+
+```json
+    "tree-sitter-c": "git://github.com/tree-sitter/tree-sitter-c.git",
+    "tree-sitter-cpp": "git://github.com/tree-sitter/tree-sitter-cpp.git"
+```
+
+Run `npm install` inside `tree-sitter-hlslv/`
+Add grammar from `https://github.com/tree-sitter-grammars/tree-sitter-hlsl`
+Run `tree-sitter generate --log`
 
 ## Setup VSCode Extension from scratch
 

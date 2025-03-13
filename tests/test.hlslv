@@ -1,7 +1,4 @@
-#include <iostream>
-
-int main()
+int Foo(in float2 v)
 {
-    int a;
-    return 0;
+    return v.x;
 }

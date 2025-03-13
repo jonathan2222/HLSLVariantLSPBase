@@ -5,6 +5,7 @@
 
 #include <tree_sitter/api.h>
 #include "tree_sitter_cpp/tree-sitter-cpp.h"
+#include "tree_sitter_hlslv/tree-sitter-hlslvparser.h"
 
 #include <iostream>
 #include <format>
@@ -36,7 +37,7 @@ TSParser* g_pParser = nullptr;
 void InitTreeSitter()
 {
     g_pParser = ts_parser_new();
-    ts_parser_set_language(g_pParser, tree_sitter_cpp());
+    ts_parser_set_language(g_pParser, tree_sitter_hlslvparser());
 }
 
 void DeleteTreeSitter()
