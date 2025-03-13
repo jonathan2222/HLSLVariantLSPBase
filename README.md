@@ -17,12 +17,12 @@ Below are instructions on how to setup the project but also what steps was made 
 1. Go to `server/`
 2. Run `FetchExternals.bat`
 3. Run `BuildAndCompileExternals.bat`
-4. Run `PremakeVS2022.bat` (Need to have VS 2022 installed) Note: All the previous setups must be done before doing this step!
+4. Run `PremakeVS2022.bat` (Need to have VS 2022 installed) *Note: All the previous setups must be done before doing this step!*
 5. Open `HLSLVariantLSPServer.sln` and compile the `HLSLVServer` project in `Debug` and `Release`.
 
 ## Debug extension
 
-1. Open the folder `hlslvariant` in VS Code. Note: server need to have been compile for this to work!
+1. Open the folder `hlslvariant` in VS Code. *Note: Server need to have been compile for this to work!*
 2. Press **F5**
 
 ## Debug server
@@ -44,7 +44,7 @@ Below are instructions on how to setup the project but also what steps was made 
 
 1. Go to `hlslsvariant/`.
 2. Make sure you have `vsce` installed. If not run `npm install -g @vscode/vsce`.
-3. Run `PackageExtension.bat` (Remember to increase the `version` value in `package.json`)
+3. Run `PackageExtension.bat` *Note: Remember to increase the `version` value in `package.json`*
 
 ## Setup VSCode Extension from scratch
 
