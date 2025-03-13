@@ -19,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "hlslvariant" is now active!');
+	console.log('Avtivating HLSLV extension');
 
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
@@ -34,9 +34,21 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// ------------------- LSP -------------------
 
-	const serverModule = context.asAbsolutePath(
-		path.join('./..', 'server', 'Build', 'bin', 'Debug-windows-x86_64-x64', 'HLSLVServer', 'HLSLVServer.exe')
-	);
+	var serverModule : string = "";
+
+	const isDebug = process.env.VSCODE_DEBUG_MODE === "true" || process.env.VSCODE_INSPECTOR_OPTIONS !== undefined;
+
+	if (isDebug) {
+		serverModule = context.asAbsolutePath(
+			path.join('./..', 'server', 'Build', 'bin', 'Debug-windows-x86_64-x64', 'HLSLVServer', 'HLSLVServer.exe')
+		);
+		console.log("Starting in Debug");
+	} else {
+		serverModule = context.asAbsolutePath(
+			path.join('./', 'bin', 'HLSLVServer.exe')
+		);
+		console.log("Starting in Release");
+	}
 
 	console.log('Server: ' + serverModule);
 
@@ -62,8 +74,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Create the language client and start the client.
 	client = new LanguageClient(
-		'languageServerExample',
-		'Language Server Example',
+		'hlslVariantServer',
+		'HLSLVariant Server',
 		serverOptions,
 		clientOptions
 	);

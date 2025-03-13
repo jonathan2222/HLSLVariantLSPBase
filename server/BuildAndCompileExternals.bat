@@ -1,0 +1,2 @@
+call BuildExternals.bat
+call CompileExternals.bat

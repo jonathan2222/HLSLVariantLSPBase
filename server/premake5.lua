@@ -105,4 +105,9 @@ project "HLSLVServer"
 	ExternalsIncludes()
 	ExternalsLinks()
 
+	-- Copy server release exe to the client's bin folder. 
+	filter {"system:windows", "configurations:Release"}
+		postbuildcommands {"xcopy /y /d %{wks.location}Build\\bin\\" .. outputdir .. "\\%{prj.name}\\%{prj.name}.exe .\\..\\hlslvariant\\bin\\"}
+	filter {}
+
 project "*"

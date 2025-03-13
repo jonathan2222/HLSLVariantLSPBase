@@ -4,7 +4,7 @@
 #include <lsp/messagehandler.h>
 
 #include <tree_sitter/api.h>
-extern "C" const TSLanguage* tree_sitter_cpp(void); // From: tree_sitter_cpp/parser.c
+#include "tree_sitter_cpp/tree-sitter-cpp.h"
 
 #include <iostream>
 #include <format>
@@ -17,7 +17,7 @@ void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& messag
         /*messageParams.actions = { lsp::MessageActionItem{"Title Test"} };*/
         lsp::jsonrpc::MessageId messageId = messageHandler.messageDispatcher().sendRequest<lsp::requests::Window_ShowMessageRequest>(
         lsp::requests::Window_ShowMessageRequest::Params{ messageParams },
-        [](lsp::requests::Window_ShowMessageRequest::Result&& result) {},
+        [](lsp::requests::Window_ShowMessageRequest::Result&& /*result*/) {},
         [](const lsp::Error& /*error*/) {});
 }
 #define SendMessage(msg) _SendMessage(messageHandler, msg)
@@ -61,7 +61,7 @@ int main()
     // 3: Register callbacks for incoming messages
     messageHandler.requestHandler()
         // Request callbacks always have the message id as the first parameter followed by the params if there are any.
-        .add<lsp::requests::Initialize>([&messageHandler](const lsp::jsonrpc::MessageId& id, lsp::requests::Initialize::Params&& params)
+        .add<lsp::requests::Initialize>([&messageHandler](const lsp::jsonrpc::MessageId& /*id*/, lsp::requests::Initialize::Params&& /*params*/)
             {
                 lsp::requests::Initialize::Result result;
                 // Initialize the result and return it or throw an lsp::RequestError if there was a problem
@@ -89,7 +89,7 @@ int main()
                 SendMessage(std::format("Changed TextDocument: {}", params.textDocument.uri.path().c_str()));
 
                 lsp::TextDocumentContentChangeEvent_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Text>(params.contentChanges[0]);
-                TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, textEvent.text.c_str(), textEvent.text.size());
+                TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, textEvent.text.c_str(), (uint32_t)textEvent.text.size());
 
                 TSNode rootNode = ts_tree_root_node(pTree);
                 char* pString = ts_node_string(rootNode);

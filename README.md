@@ -4,7 +4,43 @@ This was developed on a windows machine, thus focused on the windows platform.
 
 Below are instructions on how to setup the project but also what steps was made from the start of the project. Hope this can help the one reading this to get started without going through the pain I did :D 
 
+## Build and compile server
+
+1. Go to `server/`
+2. Run `FetchExternals.bat`
+3. Run `BuildAndCompileExternals.bat`
+4. Run `PremakeVS2022.bat` (Need to have VS 2022 installed) Note: All the previous setups must be done before doing this step!
+5. Open `HLSLVariantLSPServer.sln` and compile the `HLSLVServer` project in `Debug` and `Release`.
+
+## Debug extension
+
+1. Open the folder `hlslvariant` in VS Code. Note: server need to have been compile for this to work!
+2. Press **F5**
+
+## Debug server
+
+### Visual Studio
+
+1. Compile the `HLSLVServer` project in `Debug`.
+2. Open the folder `hlslvariant` in VS Code.
+3. Press **F5**
+4. Open `server/HLSLVariantLSPServer.sln` and press Debug -> Attach to Process..
+    Search for **HLSLVServer** and attach.
+
+### Logs
+
+1. Use lsp::notifications::Window_LogMessage to send messages to the client.
+2. Can be seen in the output with the same name as the one given to `LanguageClient` in `extension.ts`
+
+## Package Extension
+
+1. Go to `hlslsvariant/`.
+2. Make sure you have `vsce` installed. If not run `npm install -g @vscode/vsce`.
+3. Run `PackageExtension.bat` (Remember to increase the `version` value in `package.json`)
+
 ## Setup VSCode Extension from scratch
+
+<details>
 
 1. Update node to latest and npm to latest
 2. Inside hlslvarian Run `npm install --global yo generator-code` to install **Yeoman** and the **VS Code Extension Generator**
@@ -45,49 +81,4 @@ Below are instructions on how to setup the project but also what steps was made 
     ```
     This will start the server exe as long as the `serverModule` is the path to that exe. Note: The server exe is using stdin/stdout to communicate with the extension, thus cannot use it to log messages from the server!
 
-## Setup LSP Server
-
-### First setup of the LSP library
-
-1. If not fetched, run this inside `externals`: `git clone https://github.com/leon-bckl/lsp-framework.git` (From: `https://github.com/leon-bckl/lsp-framework`)
-2. Run `server/GenerateExternalsLSPVS2022Solution.bat` (Need to have cmake installed and a compiler that supports c++20)
-3. Start `server/externals/slp-framework/build/slp.sln` and compile the `lsp` project in `Debug` and `Release`
-    or run `server/CompileLSPLibrary.bat` (need to have msbuild in your systems path)
-4. Run `server/CopyLSPIncludes.bat` to move the includes to the right folder.
-
-### First setup of the tree-sitter library
-
-1. If not fetched, run this inside `externals`: `git clone https://github.com/tree-sitter/tree-sitter.git` (From: `https://github.com/tree-sitter/tree-sitter/tree/master`)
-2. Run `server/GenerateExternalsTreeSitterVS2022Solution.bat` (Need to have cmake installed and a compiler that supports c++20)
-3. Start `server/externals/tree-sitter/lib/build/slp.sln` and compile the `tree-sitter` project in `Debug` and `Release`
-    or run `server/CompileTreeSitterLibrary.bat` (need to have msbuild in your systems path)
-
-### First setup of the tree-sitter-cpp parser
-
-1. If not fetched, run this inside `externals`: `git clone https://github.com/tree-sitter/tree-sitter-cpp.git` (From: `https://github.com/tree-sitter/tree-sitter-cpp`)
-2. Run `MoveTreeSitterCPPToSrc.bat`
-
-### Generate LSP Server solution
-
-1. Run `server/PremakeVS2022.bat` (Need to have VS 2022 installed) Note: All the previous setups must be done before doing this step!
-2. Open `server/HLSLVariantLSPServer.sln` and compile the `HLSLVServer` project in `Debug` and `Release`.
-
-## Debug extension
-
-1. Open the folder `hlslvariant` in VS Code.
-2. Press **F5**
-
-## Debug server
-
-### Visual Studio
-
-1. Compile the `HLSLVServer` project in `Debug`.
-2. Open the folder `hlslvariant` in VS Code.
-3. Press **F5**
-4. Open `server/HLSLVariantLSPServer.sln` and press Debug -> Attach to Process..
-    Search for **HLSLVServer** and attach.
-
-### Logs
-
-1. Use lsp::notifications::Window_LogMessage to send messages to the client.
-2. Can be seen in the output with the same name as the one given to `LanguageClient` in `extension.ts`
+</details>
