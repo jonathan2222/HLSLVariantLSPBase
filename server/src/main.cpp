@@ -84,6 +84,15 @@ int main()
         .add<lsp::notifications::TextDocument_DidOpen>([&messageHandler](lsp::DidOpenTextDocumentParams&& params)
             {
                 SendMessage(std::format("Opened TextDocument: {}", params.textDocument.uri.path().c_str()));
+
+                std::string& text = params.textDocument.text;
+                TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, text.c_str(), (uint32_t)text.size());
+                TSNode rootNode = ts_tree_root_node(pTree);
+                char* pString = ts_node_string(rootNode);
+                std::string msg = pString;
+                SendLog(msg);
+                free(pString);
+                ts_tree_delete(pTree);
             })
         .add<lsp::notifications::TextDocument_DidChange>([&messageHandler](lsp::DidChangeTextDocumentParams&& params)
             {
