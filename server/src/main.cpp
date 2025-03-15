@@ -21,7 +21,7 @@ void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& messag
         [](lsp::requests::Window_ShowMessageRequest::Result&& /*result*/) {},
         [](const lsp::Error& /*error*/) {});
 }
-#define SendMessage(msg) _SendMessage(messageHandler, msg)
+#define SendMessage(msg) _SendMessage(*g_pMessageHandler, msg)
 
 void _SendLog(lsp::MessageHandler& messageHandler, const std::string& message)
 {
@@ -30,39 +30,69 @@ void _SendLog(lsp::MessageHandler& messageHandler, const std::string& message)
     messageParams.message = message;
     messageHandler.messageDispatcher().sendNotification<lsp::notifications::Window_LogMessage>(lsp::notifications::Window_LogMessage::Params{ messageParams });
 }
-#define SendLog(msg) _SendLog(messageHandler, msg)
+#define SendLog(msg) _SendLog(*g_pMessageHandler, msg)
 
-TSParser* g_pParser = nullptr;
+// Used for all communication between server and client.
+lsp::MessageHandler* g_pMessageHandler = nullptr;
 
-void InitTreeSitter()
+struct Walker
 {
-    g_pParser = ts_parser_new();
-    ts_parser_set_language(g_pParser, tree_sitter_hlslvparser());
-}
+private:
+    TSParser* m_pParser = nullptr;
+    TSTree* m_pCurrentTree = nullptr;
+public:
+    Walker() { InitTreeSitter(); }
+    ~Walker() { DeleteTreeSitter(); }
 
-void DeleteTreeSitter()
-{
-    ts_parser_delete(g_pParser);
-}
+    // range: The range of the document that got changed
+    // text: The text to replace the text in the range.
+    void Parse(const lsp::Range& range, const std::string& text)
+    {
+        TSTree* pTree = ts_parser_parse_string(m_pParser, m_pCurrentTree, text.c_str(), (uint32_t)text.size());
+        TSNode rootNode = ts_tree_root_node(pTree);
+        char* pString = ts_node_string(rootNode);
+        std::string msg = pString;
+        SendLog(msg);
+        free(pString);
+        ts_tree_delete(pTree);
+    }
+
+    TSParser* GetParser() { return m_pParser; }
+
+private:
+    void InitTreeSitter()
+    {
+        m_pParser = ts_parser_new();
+        ts_parser_set_language(m_pParser, tree_sitter_hlslvparser());
+    }
+
+    void DeleteTreeSitter()
+    {
+        if (m_pParser == nullptr)
+            return;
+
+        if (m_pCurrentTree)
+            ts_tree_delete(m_pCurrentTree);
+        ts_parser_delete(m_pParser);
+    }
+};
 
 int main()
 {
-    //std::cout << "Server started" << std::endl;
-
-    InitTreeSitter();
+    Walker walker;
 
     // 1: Establish a connection using standard input/output
     lsp::Connection connection{ lsp::io::standardInput(), lsp::io::standardOutput() };
 
     // 2: Create a MessageHandler with the connection
-    lsp::MessageHandler messageHandler{ connection };
+    g_pMessageHandler = new lsp::MessageHandler(connection);
 
     bool running = true;
 
     // 3: Register callbacks for incoming messages
-    messageHandler.requestHandler()
+    g_pMessageHandler->requestHandler()
         // Request callbacks always have the message id as the first parameter followed by the params if there are any.
-        .add<lsp::requests::Initialize>([&messageHandler](const lsp::jsonrpc::MessageId& /*id*/, lsp::requests::Initialize::Params&& /*params*/)
+        .add<lsp::requests::Initialize>([](const lsp::jsonrpc::MessageId& /*id*/, lsp::requests::Initialize::Params&& /*params*/)
             {
                 lsp::requests::Initialize::Result result;
                 // Initialize the result and return it or throw an lsp::RequestError if there was a problem
@@ -81,12 +111,12 @@ int main()
             {
                 running = false;
             })
-        .add<lsp::notifications::TextDocument_DidOpen>([&messageHandler](lsp::DidOpenTextDocumentParams&& params)
+        .add<lsp::notifications::TextDocument_DidOpen>([&walker](lsp::DidOpenTextDocumentParams&& params)
             {
                 SendMessage(std::format("Opened TextDocument: {}", params.textDocument.uri.path().c_str()));
 
                 std::string& text = params.textDocument.text;
-                TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, text.c_str(), (uint32_t)text.size());
+                TSTree* pTree = ts_parser_parse_string(walker.GetParser(), NULL, text.c_str(), (uint32_t)text.size());
                 TSNode rootNode = ts_tree_root_node(pTree);
                 char* pString = ts_node_string(rootNode);
                 std::string msg = pString;
@@ -94,12 +124,12 @@ int main()
                 free(pString);
                 ts_tree_delete(pTree);
             })
-        .add<lsp::notifications::TextDocument_DidChange>([&messageHandler](lsp::DidChangeTextDocumentParams&& params)
+        .add<lsp::notifications::TextDocument_DidChange>([&walker](lsp::DidChangeTextDocumentParams&& params)
             {
                 SendMessage(std::format("Changed TextDocument: {}", params.textDocument.uri.path().c_str()));
 
                 lsp::TextDocumentContentChangeEvent_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Text>(params.contentChanges[0]);
-                TSTree* pTree = ts_parser_parse_string(g_pParser, NULL, textEvent.text.c_str(), (uint32_t)textEvent.text.size());
+                TSTree* pTree = ts_parser_parse_string(walker.GetParser(), NULL, textEvent.text.c_str(), (uint32_t)textEvent.text.size());
 
                 TSNode rootNode = ts_tree_root_node(pTree);
                 char* pString = ts_node_string(rootNode);
@@ -108,7 +138,7 @@ int main()
                 free(pString);
                 ts_tree_delete(pTree);
             })
-        .add<lsp::notifications::TextDocument_DidClose>([&messageHandler](lsp::DidCloseTextDocumentParams&& params)
+        .add<lsp::notifications::TextDocument_DidClose>([](lsp::DidCloseTextDocumentParams&& params)
             {
                 SendMessage(std::format("Closed TextDocument: {}", params.textDocument.uri.path().c_str()));
             });
@@ -118,15 +148,13 @@ int main()
     try
     {
         while (running)
-            messageHandler.processIncomingMessages();
+            g_pMessageHandler->processIncomingMessages();
     }
     catch (lsp::ConnectionError e)
     {
         // Lost connection
         //e.what();
     }
-
-    DeleteTreeSitter();
 
     //std::cout << "Server stopped" << std::endl;
     return 0;
