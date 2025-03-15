@@ -4,26 +4,25 @@
 #include <cstring> // memcpy
 #include <cassert>
 
+template<typename Type>
 struct GapBuffer
 {
 public:
-	using Type = uint8_t;
-
 	GapBuffer() {}
 
-	GapBuffer(Type* pInitialData, size_t initialCount, size_t initialGapCount)
+	GapBuffer(const Type* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex = 0u)
 	{
-		Init(pInitialData, initialCount, initialGapCount);
+		Init(pInitialData, initialCount, initialGapCount, initialGapIndex);
 	}
 
-	~GapBuffer()
+	virtual ~GapBuffer()
 	{
 		Delete();
 	}
 
-	void Create(Type* pInitialData, size_t initialCount, size_t initialGapCount)
+	void Create(const Type* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex = 0u)
 	{
-		Init(pInitialData, initialCount, initialGapCount);
+		Init(pInitialData, initialCount, initialGapCount, initialGapIndex);
 	}
 
 	void Left(size_t steps = 1u)
@@ -61,6 +60,7 @@ public:
 			// Need to use the scratch buffer if copy paste ranges overlap.
 			if (steps > m_GapCount)
 			{
+				GrowScratchBuffer(steps);
 				std::memcpy(m_pGapScratchBuffer, pNewGapStart, sizeof(Type) * steps);
 				std::memcpy(pNewGapStart + m_GapCount, m_pGapScratchBuffer, sizeof(Type) * steps);
 			}
@@ -111,6 +111,7 @@ public:
 			// Need to use the scratch buffer if copy pase ranges overlap.
 			if (steps > m_GapCount)
 			{
+				GrowScratchBuffer(steps);
 				std::memcpy(m_pGapScratchBuffer, m_pGapStart + m_GapCount, sizeof(Type) * steps);
 				std::memcpy(m_pGapStart, m_pGapScratchBuffer, sizeof(Type) * steps);
 			}
@@ -119,7 +120,7 @@ public:
 				std::memcpy(m_pGapStart, m_pGapStart + m_GapCount, sizeof(Type) * steps);
 			}
 #ifdef MSLP_DEBUG
-			std::memset(m_pGapStart + m_GapCount, m_sDebugByte, sizeof(Type) * m_GapCount);
+			std::memset(m_pGapStart + steps, m_sDebugByte, sizeof(Type) * m_GapCount);
 #endif
 		}
 
@@ -128,7 +129,7 @@ public:
 
 	// Note: This moves the gap towards the index.
 	// index: The index before it will be inserted. The element at that position will be on the right side of this index after insertion.
-	void Insert(size_t index, Type* pData, size_t dataCount)
+	void Insert(size_t index, const Type* pData, size_t dataCount)
 	{
 #ifdef MSLP_DEBUG
 		assert(IsInitialized());
@@ -165,7 +166,28 @@ public:
 		GrowOverlap(count);
 	}
 
-private:
+#ifdef MSLP_DEBUG
+	void InspectBuffersAsStrings(std::string& bufferStrOut, std::string& scratchStrOut) const
+	{
+		assert(m_BufferCount != 0u);
+		assert(m_GapCount != 0u);
+		assert(m_GapCapacity != 0u);
+
+		bufferStrOut.resize(m_BufferCount);
+		const size_t leftCount = CalcLeftCount();
+		const size_t rightCount = CalcRightCount();
+		if (leftCount > 0)
+			std::memcpy(bufferStrOut.data(), m_pBufferStart, leftCount);
+		if (rightCount > 0)
+			std::memcpy(bufferStrOut.data() + leftCount + m_GapCount, m_pBufferStart + leftCount + m_GapCount, rightCount);
+		std::memcpy(bufferStrOut.data() + leftCount, m_pBufferStart + leftCount, m_GapCount);
+
+		scratchStrOut.resize(m_GapCapacity);
+		std::memcpy(scratchStrOut.data(), m_pGapScratchBuffer, m_GapCapacity);
+	}
+#endif
+
+protected:
 	// Moves gap such that the start of the gap is where the index pointed to.
 	// Index does not include the gap:
 	// 0 1 2 | - - - - | 3 4 5 
@@ -222,13 +244,7 @@ private:
 		const size_t newGapSize = newSize - leftSize - rightSize;
 
 		// Update scratch buffer size
-		if (newGapSize > m_GapCapacity)
-		{
-			if (m_pGapScratchBuffer)
-				delete[] m_pGapScratchBuffer;
-			m_pGapScratchBuffer = new Type[m_GapCount];
-			m_GapCapacity = m_GapCount;
-		}
+		GrowScratchBuffer(newGapSize);
 
 		// Copy Left buffer
 		std::memcpy(pNewBuffer, m_pBufferStart, sizeof(Type) * leftSize);
@@ -263,31 +279,26 @@ private:
 #endif
 		m_GapCount += extraCount;
 
-		if (m_GapCount > m_GapCapacity)
-		{
-			if (m_pGapScratchBuffer)
-				delete[] m_pGapScratchBuffer;
-			m_pGapScratchBuffer = new Type[m_GapCount];
-			m_GapCapacity = m_GapCount;
-		}
+		GrowScratchBuffer(m_GapCount);
 	}
 
-	void Init(Type* pInitialData, size_t initialCount, size_t initialGapCount)
+	void Init(const Type* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex)
 	{
 		// Delete old data
-		if (!IsInitialized())
+		if (IsInitialized())
 			Delete();
 
 #ifdef MSLP_DEBUG
 		assert(initialGapCount != 0 && "Cannot initialize an empty gap!");
 		assert((pInitialData == nullptr && initialCount == 0) || (pInitialData != nullptr && initialCount > 0) && "pInitialData need to match the initialCount!");
+		assert(initialGapIndex <= initialCount && "Gap index out of bounds!");
 #endif
 
 		m_BufferCount = initialCount + initialGapCount;
 		m_pBufferStart = new Type[m_BufferCount];
 
 		m_GapCount = initialGapCount;
-		m_pGapStart = m_pBufferStart;
+		m_pGapStart = m_pBufferStart + initialGapIndex;
 
 		m_pGapScratchBuffer = new Type[m_GapCount];
 		m_GapCapacity = m_GapCount;
@@ -295,10 +306,12 @@ private:
 		// Copy data
 		if (initialCount > 0 && pInitialData)
 		{
-			const size_t leftCount = (size_t)(m_pGapStart - m_pBufferStart);
-			const size_t rightCount = m_BufferCount - leftCount - m_GapCount;
-			std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
-			std::memcpy(m_pBufferStart + leftCount + m_GapCount, pInitialData + leftCount, sizeof(Type) * rightCount);
+			const size_t leftCount = CalcLeftCount();
+			const size_t rightCount = CalcRightCount();
+			if (leftCount != 0u)
+				std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
+			if (rightCount != 0u)
+				std::memcpy(m_pBufferStart + leftCount + m_GapCount, pInitialData + leftCount, sizeof(Type) * rightCount);
 		}
 
 #ifdef MSLP_DEBUG
@@ -325,15 +338,26 @@ private:
 		}
 	}
 
+	void GrowScratchBuffer(size_t newCount)
+	{
+		if (newCount > m_GapCapacity)
+		{
+			if (m_pGapScratchBuffer)
+				delete[] m_pGapScratchBuffer;
+			m_pGapScratchBuffer = new Type[newCount];
+			m_GapCapacity = newCount;
+		}
+	}
+
 	size_t CalcLeftCount() const { return (size_t)(m_pGapStart - m_pBufferStart); }
 	size_t CalcRightCount() const { return m_BufferCount - CalcLeftCount() - m_GapCount; }
 
 	bool IsInitialized() const { return m_pBufferStart != nullptr; }
 
-private:
+protected:
 	inline static const uint32_t m_sGrowSizeFactor = 2;
 #ifdef MSLP_DEBUG
-	inline static constexpr uint8_t m_sDebugByte = 0xFF;
+	inline static constexpr uint8_t m_sDebugByte = 45u; // '-'
 #endif
 
 	Type* m_pBufferStart = nullptr;
@@ -345,3 +369,37 @@ private:
 	Type* m_pGapScratchBuffer = nullptr; // Used for storing data that should be copied.
 	size_t m_GapCapacity = 0;
 };
+
+#ifdef MSLP_DEBUG
+
+namespace DebugGapBuffer
+{
+	void UnitTest()
+	{
+		std::string bufferStr, scratchStr;
+		GapBuffer<char> gapBuffer;
+		std::string str = "This is a test string with even more data in it. For this is a great block of text.";
+		gapBuffer.Create(str.c_str(), str.size(), 10, 12); // Note: Add +1 to the size if you want to include the null terminator in the internal buffer.
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is a te----------st string with even more data in it. For this is a great block of text.");
+		gapBuffer.Left();
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is a t----------est string with even more data in it. For this is a great block of text.");
+		gapBuffer.Left(4);
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is---------- a test string with even more data in it. For this is a great block of text.");
+		gapBuffer.Right(20);
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is a test string with ----------even more data in it. For this is a great block of text.");
+		gapBuffer.Insert(9, " large", 6);
+		// str = "This is a large test string with even more data in it. For this is a great block of text.";
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is a large---- test string with even more data in it. For this is a great block of text.");
+		gapBuffer.Erase(27, 26);
+		// str = "This is a large test string. For this is a great block of text.";
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is a large test string------------------------------. For this is a great block of text.");
+	}
+}
+
+#endif

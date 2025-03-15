@@ -79,11 +79,35 @@ private:
     }
 };
 
+struct FileBuffer : public GapBuffer<char>
+{
+    void Inspect(std::string& bufferStr, std::string& scratchStr) const
+    {
+        assert(m_BufferCount != 0u);
+        assert(m_GapCount != 0u);
+        assert(m_GapCapacity != 0u);
+
+        bufferStr.resize(m_BufferCount);
+        const size_t leftCount = CalcLeftCount();
+        const size_t rightCount = CalcRightCount();
+        if (leftCount > 0)
+            std::memcpy(bufferStr.data(), m_pBufferStart, leftCount);
+        if (rightCount > 0)
+            std::memcpy(bufferStr.data() + leftCount + m_GapCount, m_pBufferStart + leftCount + m_GapCount, rightCount);
+        std::memcpy(bufferStr.data() + leftCount, m_pBufferStart + leftCount, m_GapCount);
+
+        scratchStr.resize(m_GapCapacity);
+        std::memcpy(scratchStr.data(), m_pGapScratchBuffer, m_GapCapacity);
+    }
+};
+
 int main()
 {
-    GapBuffer gapBuffer;
-    gapBuffer.Create(,);
+    std::string bufferStr, scratchStr;
 
+#ifdef MSLP_DEBUG
+    DebugGapBuffer::UnitTest();
+#endif
 
     Walker walker;
 
