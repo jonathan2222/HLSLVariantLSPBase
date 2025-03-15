@@ -11,6 +11,7 @@
 #include <format>
 
 #include "GapBuffer.h"
+#include "StringUtils.h"
 
 void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& message)
 {
@@ -37,19 +38,159 @@ void _SendLog(lsp::MessageHandler& messageHandler, const std::string& message)
 // Used for all communication between server and client.
 lsp::MessageHandler* g_pMessageHandler = nullptr;
 
+struct FileBuffer : public GapBuffer<char>
+{
+    char* CopyData(bool nullTerminated) const
+    {
+        char* pData = GapBuffer<char>::CopyData(nullTerminated ? 1u : 0u);
+        if (nullTerminated)
+            pData[GetDataCount()] = '\0';
+        return pData;
+    }
+
+    uint32_t FetchByteOffsetFromLine(uint32_t line) const
+    {
+        assert(m_LinePointer.size() > line && "Trying to fetch a byte offset from a line that does not exist!");
+        return m_LinePointer[line];
+    }
+
+    uint32_t FetchByteOffsetFromPosition(const lsp::Position position) const
+    {
+        return FetchByteOffsetFromLine(position.line) + position.character;
+    }
+
+    void ModifyLineData(const std::string& text, const lsp::Range& range)
+    {
+        uint32_t startByteOffset = FetchByteOffsetFromPosition(range.start);
+        uint32_t endByteOffset = FetchByteOffsetFromPosition(range.end);
+        int64_t oldBytesRange = (int64_t)(endByteOffset - startByteOffset);
+        int64_t newBytesRange = (int64_t)text.size();
+
+        uint32_t currentLine = range.start.line;
+
+        std::vector<uint32_t> oldRangeLineData;
+
+        uint32_t newLineRange = 0;
+        // Lines in this needs to be updated.
+        for (uint64_t i = 0; i < text.size(); ++i)
+        {
+            char c = text[i];
+            if (c == '\n')
+            {
+                newLineRange++;
+
+                currentLine++;
+                // The first byte on this line is the next byte in the array.
+                uint32_t currentByteOffset = startByteOffset + i + 1;
+                if (currentLine >= m_LinePointer.size())
+                    m_LinePointer.push_back(currentByteOffset);
+                else
+                {
+                    oldRangeLineData.push_back(m_LinePointer[currentLine]);
+                    m_LinePointer[currentLine] = currentByteOffset;
+                }
+            }
+        }
+
+        // If positive: bytes were added, negative: bytes were removed.
+        int64_t bytesAdded = newBytesRange - oldBytesRange;
+
+        // TODO: Fix this!
+        uint32_t oldLineRange = range.end.line - range.start.line;
+        if (oldLineRange > newLineRange)
+        {
+            uint32_t lineDiff = oldLineRange - newLineRange;
+            m_LinePointer.resize(m_LinePointer.size() - lineDiff);
+            uint32_t lineCarry = 0;
+            for (uint32_t line = currentLine + 1; line < m_LinePointer.size(); ++line)
+            {
+                if (line - range.start.line - lineDiff < 0)
+                {
+                    lineCarry = oldRangeLineData[line - range.start.line - lineDiff];
+                    m_LinePointer[line] = (uint32_t)(lineCarry + bytesAdded);
+                }
+
+                lineCarry = (int64_t)m_LinePointer[line];
+                m_LinePointer[line] = (uint32_t)(lineCarry + bytesAdded);
+            }
+        }
+
+        for (uint32_t line = currentLine + 1; line < m_LinePointer.size(); ++line)
+        {
+            int64_t byteOffset = (int64_t)m_LinePointer[line];
+            m_LinePointer[line] = (uint32_t)(byteOffset + bytesAdded);
+        }
+    }
+
+    void ReplaceAt(const std::string& text, const lsp::Range& range)
+    {
+        uint32_t startByteOffset = FetchByteOffsetFromPosition(range.start);
+        uint32_t endByteOffset = FetchByteOffsetFromPosition(range.end);
+        int64_t oldBytesRange = (int64_t)(endByteOffset - startByteOffset);
+        int64_t newBytesRange = (int64_t)text.size();
+
+        // Modify m_LinePoionter to reflect the edit.
+        {
+            
+        }
+
+        // First erase
+        Erase(startByteOffset, endByteOffset - startByteOffset);
+
+        // Then add
+        Insert(startByteOffset, text.c_str(), text.size());
+    }
+
+private:
+    std::vector<uint32_t> m_LinePointer; // Index of the vector is the line number and the value is the byte offset of the data where the line starts.
+};
+
 struct Walker
 {
 private:
     TSParser* m_pParser = nullptr;
     TSTree* m_pCurrentTree = nullptr;
+    FileBuffer m_FileBuffer;
+
+    uint32_t FetchByteOffsetFromPosition(const lsp::Position& position)
+    {
+        // What to do here?
+
+        return 0u;
+    }
+
 public:
     Walker() { InitTreeSitter(); }
     ~Walker() { DeleteTreeSitter(); }
 
-    // range: The range of the document that got changed
     // text: The text to replace the text in the range.
-    void Parse(const lsp::Range& range, const std::string& text)
+    // (optional) range: The range of the document that got changed
+    void Parse(const std::string& text, const lsp::Range* pRange = nullptr)
     {
+        if (m_pParser != nullptr && pRange == nullptr)
+            ts_parser_reset(m_pParser);
+
+        // An edit occured.
+        if (pRange != nullptr)
+        {
+            // A row of 0 here means no change in row. If row == 0 then character is an offset of the start.
+            // But if row != 0 the character is the new character position.
+            lsp::Position newPositionOffset = Utils::FetchPositionFromText(text);
+
+            TSInputEdit inputEdit;
+            inputEdit.start_point = { .row = pRange->start.line, .column = pRange->start.character };
+            inputEdit.old_end_point = { .row = pRange->end.line, .column = pRange->end.character };
+            inputEdit.start_byte = FetchByteOffsetFromPosition(pRange->start);
+            inputEdit.old_end_byte = FetchByteOffsetFromPosition(pRange->end);
+            inputEdit.new_end_point =
+            {
+                .row = newPositionOffset.line,
+                .column = newPositionOffset.line == 0 ? newPositionOffset.character : inputEdit.start_point.column + newPositionOffset.character
+            };
+            inputEdit.new_end_byte = inputEdit.old_end_byte + text.size();
+            ts_tree_edit(m_pCurrentTree, &inputEdit);
+        }
+
         TSTree* pTree = ts_parser_parse_string(m_pParser, m_pCurrentTree, text.c_str(), (uint32_t)text.size());
         TSNode rootNode = ts_tree_root_node(pTree);
         char* pString = ts_node_string(rootNode);
@@ -76,17 +217,6 @@ private:
         if (m_pCurrentTree)
             ts_tree_delete(m_pCurrentTree);
         ts_parser_delete(m_pParser);
-    }
-};
-
-struct FileBuffer : public GapBuffer<char>
-{
-    char* CopyData(bool nullTerminated) const
-    {
-        char* pData = GapBuffer<char>::CopyData(nullTerminated ? 1u : 0u);
-        if (nullTerminated)
-            pData[GetDataCount()] = '\0';
-        return pData;
     }
 };
 
