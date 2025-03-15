@@ -175,7 +175,7 @@ public:
 
 		bufferStrOut.resize(m_BufferCount);
 		const size_t leftCount = CalcLeftCount();
-		const size_t rightCount = CalcRightCount();
+		const size_t rightCount = CalcRightCount(leftCount);
 		if (leftCount > 0)
 			std::memcpy(bufferStrOut.data(), m_pBufferStart, leftCount);
 		if (rightCount > 0)
@@ -186,6 +186,37 @@ public:
 		std::memcpy(scratchStrOut.data(), m_pGapScratchBuffer, m_GapCapacity);
 	}
 #endif
+
+	size_t GetDataCount() const
+	{
+		const size_t leftCount = CalcLeftCount();
+		const size_t rightCount = CalcRightCount(leftCount);
+		return leftCount + rightCount;
+	}
+
+	// This allocates a new array. Remember to delete it when done using it!
+	Type* CopyData(uint32_t extraSpace = 0u) const
+	{
+		const size_t leftCount = CalcLeftCount();
+		const size_t rightCount = CalcRightCount(leftCount);
+		const size_t count = leftCount + rightCount;
+
+#ifdef MSLP_DEBUG
+		assert(IsInitialized());
+		assert(count > 0);
+#endif
+		Type* pData = new Type[count + extraSpace];
+		if (leftCount != 0)
+			std::memcpy(pData, m_pBufferStart, sizeof(Type) * leftCount);
+		if (rightCount != 0)
+			std::memcpy(pData + leftCount, m_pBufferStart + leftCount + m_GapCount, sizeof(Type) * rightCount);
+		return pData;
+	}
+
+	bool IsEmpty() const
+	{
+		return !IsInitialized() || GetDataCount() == 0u;
+	}
 
 protected:
 	// Moves gap such that the start of the gap is where the index pointed to.
@@ -307,7 +338,7 @@ protected:
 		if (initialCount > 0 && pInitialData)
 		{
 			const size_t leftCount = CalcLeftCount();
-			const size_t rightCount = CalcRightCount();
+			const size_t rightCount = CalcRightCount(leftCount);
 			if (leftCount != 0u)
 				std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
 			if (rightCount != 0u)
@@ -350,6 +381,7 @@ protected:
 	}
 
 	size_t CalcLeftCount() const { return (size_t)(m_pGapStart - m_pBufferStart); }
+	size_t CalcRightCount(size_t leftCount) const { return m_BufferCount - leftCount - m_GapCount; }
 	size_t CalcRightCount() const { return m_BufferCount - CalcLeftCount() - m_GapCount; }
 
 	bool IsInitialized() const { return m_pBufferStart != nullptr; }
@@ -399,6 +431,10 @@ namespace DebugGapBuffer
 		// str = "This is a large test string. For this is a great block of text.";
 		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
 		assert(bufferStr == "This is a large test string------------------------------. For this is a great block of text.");
+
+		char* pData = gapBuffer.CopyData(1u);
+		pData[gapBuffer.GetDataCount()] = '\0';
+		assert(strcmp(pData, "This is a large test string. For this is a great block of text.") == 0);
 	}
 }
 
