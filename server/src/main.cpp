@@ -10,6 +10,8 @@
 #include <iostream>
 #include <format>
 
+#include "GapBuffer.h"
+
 void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& message)
 {
     lsp::ShowMessageRequestParams messageParams;
@@ -79,6 +81,10 @@ private:
 
 int main()
 {
+    GapBuffer gapBuffer;
+    gapBuffer.Create(,);
+
+
     Walker walker;
 
     // 1: Establish a connection using standard input/output

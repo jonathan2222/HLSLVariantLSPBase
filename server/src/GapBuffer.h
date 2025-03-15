@@ -9,6 +9,8 @@ struct GapBuffer
 public:
 	using Type = uint8_t;
 
+	GapBuffer() {}
+
 	GapBuffer(Type* pInitialData, size_t initialCount, size_t initialGapCount)
 	{
 		Init(pInitialData, initialCount, initialGapCount);
@@ -19,8 +21,17 @@ public:
 		Delete();
 	}
 
+	void Create(Type* pInitialData, size_t initialCount, size_t initialGapCount)
+	{
+		Init(pInitialData, initialCount, initialGapCount);
+	}
+
 	void Left(size_t steps = 1u)
 	{
+#ifdef MSLP_DEBUG
+		assert(IsInitialized());
+#endif
+
 		// At the left most position.
 		// | - - - - - | 0 1 2 3 4 5 6 7 8 9
 		if (m_pGapStart == m_pBufferStart)
@@ -67,6 +78,10 @@ public:
 
 	void Right(size_t steps = 1u)
 	{
+#ifdef MSLP_DEBUG
+		assert(IsInitialized());
+#endif
+
 		// At the right most position.
 		// 0 1 2 3 4 5 6 7 8 9 | - - - - - |
 		if (m_pGapStart == (m_pBufferStart + m_BufferCount - 1u - m_GapCount - 1u))
@@ -115,6 +130,10 @@ public:
 	// index: The index before it will be inserted. The element at that position will be on the right side of this index after insertion.
 	void Insert(size_t index, Type* pData, size_t dataCount)
 	{
+#ifdef MSLP_DEBUG
+		assert(IsInitialized());
+#endif
+
 		// Don't let gap become zero.
 		if (m_GapCount < dataCount + 1u)
 			Grow();
@@ -137,8 +156,11 @@ public:
 		Insert(index, &data, 1u);
 	}
 
-	void Erase(size_t index, size_t count)
+	void Erase(size_t index, size_t count = 1u)
 	{
+#ifdef MSLP_DEBUG
+		assert(IsInitialized());
+#endif
 		MoveTo(index);
 		GrowOverlap(count);
 	}
@@ -200,11 +222,12 @@ private:
 		const size_t newGapSize = newSize - leftSize - rightSize;
 
 		// Update scratch buffer size
-		if (newGapSize > m_GapScratchBufferCount)
+		if (newGapSize > m_GapCapacity)
 		{
 			if (m_pGapScratchBuffer)
 				delete[] m_pGapScratchBuffer;
 			m_pGapScratchBuffer = new Type[m_GapCount];
+			m_GapCapacity = m_GapCount;
 		}
 
 		// Copy Left buffer
@@ -240,22 +263,24 @@ private:
 #endif
 		m_GapCount += extraCount;
 
-		if (m_GapCount > m_GapScratchBufferCount)
+		if (m_GapCount > m_GapCapacity)
 		{
 			if (m_pGapScratchBuffer)
 				delete[] m_pGapScratchBuffer;
 			m_pGapScratchBuffer = new Type[m_GapCount];
+			m_GapCapacity = m_GapCount;
 		}
 	}
 
 	void Init(Type* pInitialData, size_t initialCount, size_t initialGapCount)
 	{
 		// Delete old data
-		if (m_pBufferStart)
+		if (!IsInitialized())
 			Delete();
 
 #ifdef MSLP_DEBUG
-		assert(initialCount != 0 && initialGapCount != 0 && "Cannot initialize empty arrays!");
+		assert(initialGapCount != 0 && "Cannot initialize an empty gap!");
+		assert((pInitialData == nullptr && initialCount == 0) || (pInitialData != nullptr && initialCount > 0) && "pInitialData need to match the initialCount!");
 #endif
 
 		m_BufferCount = initialCount + initialGapCount;
@@ -265,12 +290,16 @@ private:
 		m_pGapStart = m_pBufferStart;
 
 		m_pGapScratchBuffer = new Type[m_GapCount];
+		m_GapCapacity = m_GapCount;
 
 		// Copy data
-		const size_t leftCount = (size_t)(m_pGapStart - m_pBufferStart);
-		const size_t rightCount = m_BufferCount - leftCount - m_GapCount;
-		std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
-		std::memcpy(m_pBufferStart + leftCount + m_GapCount, pInitialData + leftCount, sizeof(Type) * rightCount);
+		if (initialCount > 0 && pInitialData)
+		{
+			const size_t leftCount = (size_t)(m_pGapStart - m_pBufferStart);
+			const size_t rightCount = m_BufferCount - leftCount - m_GapCount;
+			std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
+			std::memcpy(m_pBufferStart + leftCount + m_GapCount, pInitialData + leftCount, sizeof(Type) * rightCount);
+		}
 
 #ifdef MSLP_DEBUG
 		std::memset(m_pGapStart, m_sDebugByte, sizeof(Type) * m_GapCount);
@@ -292,17 +321,19 @@ private:
 		{
 			delete[] m_pGapScratchBuffer;
 			m_pGapScratchBuffer = nullptr;
-			m_GapScratchBufferCount = 0;
+			m_GapCapacity = 0;
 		}
 	}
 
 	size_t CalcLeftCount() const { return (size_t)(m_pGapStart - m_pBufferStart); }
 	size_t CalcRightCount() const { return m_BufferCount - CalcLeftCount() - m_GapCount; }
 
+	bool IsInitialized() const { return m_pBufferStart != nullptr; }
+
 private:
 	inline static const uint32_t m_sGrowSizeFactor = 2;
 #ifdef MSLP_DEBUG
-	inline static constexpr unsigned char m_sDebugByte = 0xFF;
+	inline static constexpr uint8_t m_sDebugByte = 0xFF;
 #endif
 
 	Type* m_pBufferStart = nullptr;
@@ -312,5 +343,5 @@ private:
 	size_t m_GapCount = 0;
 
 	Type* m_pGapScratchBuffer = nullptr; // Used for storing data that should be copied.
-	size_t m_GapScratchBufferCount = 0;
+	size_t m_GapCapacity = 0;
 };
