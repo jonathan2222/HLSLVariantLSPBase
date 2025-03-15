@@ -7,220 +7,297 @@
 struct GapBuffer
 {
 public:
-	using Type = unsigned char;
+	using Type = uint8_t;
 
-	GapBuffer(Type* pInitialData, size_t initialSize, size_t initialGapSize)
+	GapBuffer(Type* pInitialData, size_t initialCount, size_t initialGapCount)
 	{
-#ifdef MSLP_DEBUG
-		assert(initialSize != 0 && initialGapSize != 0 && "Cannot initialize empty arrays!");
-#endif
-
-		m_BufferSize = initialSize + initialGapSize;
-		m_pBufferStart = new Type[m_BufferSize];
-
-		m_GapSize = initialGapSize;
-		m_pGapStart = m_pBufferStart;
-
-		m_pGapScratchBuffer = new Type[m_GapSize];
-
-		// Copy data
-		const size_t leftSize = (size_t)(m_pBufferStart - m_pGapStart);
-		const size_t rightSize = m_BufferSize - leftSize + m_GapSize;
-		std::memcpy(m_pBufferStart, pInitialData, leftSize);
-		std::memcpy(m_pBufferStart + leftSize + m_GapSize, pInitialData+ leftSize, rightSize);
-
-#ifdef MSLP_DEBUG
-		std::memset(m_pGapStart, m_sDebugByte, m_GapSize);
-#endif
+		Init(pInitialData, initialCount, initialGapCount);
 	}
 
 	~GapBuffer()
 	{
-		if (m_pBufferStart)
-		{
-			delete[] m_pBufferStart;
-			m_pBufferStart = nullptr;
-			m_BufferSize = 0;
-		}
-		m_pGapStart = nullptr;
-		m_GapSize = 0;
-
-		if (m_pGapScratchBuffer)
-		{
-			delete[] m_pGapScratchBuffer;
-			m_pGapScratchBuffer = nullptr;
-			m_GapScratchBufferSize = 0;
-		}
+		Delete();
 	}
 
-	void Left(size_t steps = 1)
+	void Left(size_t steps = 1u)
 	{
 		// At the left most position.
+		// | - - - - - | 0 1 2 3 4 5 6 7 8 9
 		if (m_pGapStart == m_pBufferStart)
 			return;
 
 		// Move gap position to the left, clamping it to the buffer start position if outside.
 		Type* pNewGapStart = m_pGapStart;
-		const size_t leftSize = (size_t)(m_pBufferStart - m_pGapStart);
-		if (leftSize >= steps)
+		const size_t leftCount = CalcLeftCount();
+		if (leftCount > steps)
 			pNewGapStart -= steps;
 		else
+		{
 			pNewGapStart = m_pBufferStart;
+			steps = leftCount;
+		}
 
 		// Move data
 		if (steps == 1u)
 		{
-			*(pNewGapStart + m_GapSize) = *pNewGapStart;
+			*(pNewGapStart + m_GapCount) = *pNewGapStart;
 #ifdef MSLP_DEBUG
 			*pNewGapStart = m_sDebugByte;
 #endif
 		}
 		else
 		{
-			// Need to use the scratch buffer if copy pase ranges overlap.
-			if (steps > m_GapSize)
+			// Need to use the scratch buffer if copy paste ranges overlap.
+			if (steps > m_GapCount)
 			{
-				std::memcpy(m_pGapScratchBuffer, pNewGapStart, steps);
-				std::memcpy(pNewGapStart + m_GapSize, m_pGapScratchBuffer, steps);
+				std::memcpy(m_pGapScratchBuffer, pNewGapStart, sizeof(Type) * steps);
+				std::memcpy(pNewGapStart + m_GapCount, m_pGapScratchBuffer, sizeof(Type) * steps);
 			}
 			else
 			{
-				std::memcpy(pNewGapStart + m_GapSize, pNewGapStart, steps);
+				std::memcpy(pNewGapStart + m_GapCount, pNewGapStart, sizeof(Type) * steps);
 			}
 #ifdef MSLP_DEBUG
-			std::memset(pNewGapStart, m_sDebugByte, m_GapSize);
+			std::memset(pNewGapStart, m_sDebugByte, sizeof(Type) * m_GapCount);
 #endif
 		}
 
 		m_pGapStart = pNewGapStart;
 	}
 
-	void Right(size_t steps = 1)
+	void Right(size_t steps = 1u)
 	{
 		// At the right most position.
-		if ((m_pGapStart + m_GapSize) == (m_pBufferStart + m_BufferSize))
+		// 0 1 2 3 4 5 6 7 8 9 | - - - - - |
+		if (m_pGapStart == (m_pBufferStart + m_BufferCount - 1u - m_GapCount - 1u))
 			return;
 
 		// Move gap position to the right, clamping it to the buffer end position if outside.
 		Type* pNewGapStart = m_pGapStart;
-		const size_t leftSize = (size_t)(m_pBufferStart - m_pGapStart);
-		const size_t rightSize = m_BufferSize - leftSize + m_GapSize;
-		if (rightSize >= steps)
+		const size_t rightCount = CalcRightCount();
+		if (rightCount > steps)
 			pNewGapStart += steps;
 		else
-			pNewGapStart = m_pBufferStart + m_BufferSize - 1;
+		{
+			pNewGapStart = m_pBufferStart + m_BufferCount - 1;
+			steps = rightCount;
+		}
 
 		// Move data
 		if (steps == 1u)
 		{
-			*pNewGapStart = *(pNewGapStart + m_GapSize);
+			*pNewGapStart = *(pNewGapStart + m_GapCount);
 #ifdef MSLP_DEBUG
-			*(pNewGapStart + m_GapSize) = m_sDebugByte;
+			*(pNewGapStart + m_GapCount) = m_sDebugByte;
 #endif
 		}
 		else
 		{
 			// Need to use the scratch buffer if copy pase ranges overlap.
-			if (steps > m_GapSize)
+			if (steps > m_GapCount)
 			{
-				std::memcpy(m_pGapScratchBuffer, m_pGapStart + m_GapSize, steps);
-				std::memcpy(m_pGapStart, m_pGapScratchBuffer, steps);
+				std::memcpy(m_pGapScratchBuffer, m_pGapStart + m_GapCount, sizeof(Type) * steps);
+				std::memcpy(m_pGapStart, m_pGapScratchBuffer, sizeof(Type) * steps);
 			}
 			else
 			{
-				std::memcpy(m_pGapStart, m_pGapStart + m_GapSize, steps);
+				std::memcpy(m_pGapStart, m_pGapStart + m_GapCount, sizeof(Type) * steps);
 			}
 #ifdef MSLP_DEBUG
-			std::memset(m_pGapStart, m_sDebugByte, m_GapSize);
+			std::memset(m_pGapStart + m_GapCount, m_sDebugByte, sizeof(Type) * m_GapCount);
 #endif
 		}
 
 		m_pGapStart = pNewGapStart;
 	}
 
-	void Insert(size_t index, Type data)
+	// Note: This moves the gap towards the index.
+	// index: The index before it will be inserted. The element at that position will be on the right side of this index after insertion.
+	void Insert(size_t index, Type* pData, size_t dataCount)
 	{
-#ifdef MSLP_DEBUG
-		assert(index < (m_BufferSize - m_GapSize) && "Out of bounds!");
-#endif
-
 		// Don't let gap become zero.
-		if (m_GapSize == 1)
+		if (m_GapCount < dataCount + 1u)
 			Grow();
 
-		const size_t leftSize = (size_t)(m_pBufferStart - m_pGapStart);
-		const size_t rightSize = m_BufferSize - leftSize + m_GapSize;
-		const size_t gapEndIndex = leftSize + m_GapSize - 1;
-		const size_t indexFromGapStart = index - leftSize;
-		size_t bufferIndex = index >= leftSize ? (gapEndIndex + indexFromGapStart) : index;
+		MoveTo(index);
 
-		// TODO: Make this!
-		//int64_t leftOffset = bufferIndex - leftSize;
-		//int64_t gapOffset = bufferIndex < leftSize ? ();
-		//const size_t steps = gapOffset < 0 ? -gapOffset : gapOffset;
-		//
-		//if (gapOffset == 1)
-		//{
-		//	m_pBufferStart[bufferIndex] = data;
-		//	m_pGapStart++;
-		//	m_GapSize--;
-		//}
-		//
-		//if (gapOffset > 0)
-		//	Right(steps);
+		if (dataCount > 1)
+			std::memcpy(m_pGapStart, pData, sizeof(Type) * dataCount);
+		else
+			*m_pGapStart = *pData;
 
-		m_pBufferStart[bufferIndex] = data;
-		m_pGapStart++;
-		m_GapSize--;
+		m_pGapStart += dataCount;
+		m_GapCount -= dataCount;
 	}
 
-	void Erase(size_t index)
+	// Note: This moves the gap towards the index.
+	// index: The index before it will be inserted. The element at that position will be on the right side of this index after insertion.
+	void Insert(size_t index, Type data)
 	{
-#ifdef MSLP_DEBUG
-		assert(index >= 0 && index < m_BufferSize && "Out of bounds!");
-#endif
+		Insert(index, &data, 1u);
+	}
 
-		m_pGapStart--;
-		m_GapSize++;
+	void Erase(size_t index, size_t count)
+	{
+		MoveTo(index);
+		GrowOverlap(count);
 	}
 
 private:
+	// Moves gap such that the start of the gap is where the index pointed to.
+	// Index does not include the gap:
+	// 0 1 2 | - - - - | 3 4 5 
+	void MoveTo(size_t index)
+	{
+#ifdef MSLP_DEBUG
+		assert(index <= (m_BufferCount - m_GapCount) && "Out of bounds!");
+#endif
+
+		const size_t leftCount = CalcLeftCount();
+		const bool onLeftSide = index < leftCount;
+
+		// BufferStart         BufferEnd
+		// |                       |
+		// 0 1 2 | - - - - | 3 4 5 
+		//         ^         ^
+		//     GapStart    GapEnd
+
+		// Index
+		// 0 1 2 | - - - - | 3 4 5 
+		// BufferIndex
+		// 0 1 2 | 3 4 5 6 | 7 8 9 
+
+		// Move the gap such that 'BufferIndex' is at the start of the gap:
+		//    BufferIndex          
+		//         |               
+		// 0 1 2 | - - - - | 3 4 5 
+
+		if (onLeftSide)
+		{
+			const size_t leftOffset = leftCount - index; // GapStart -> BufferIndex
+			Left(leftOffset);
+		}
+		else
+		{
+			const size_t rightOffset = index - leftCount; // GapEnd -> BufferIndex
+			Right(rightOffset);
+		}
+	}
+
+	// Grows the gap without disrupting the data.
+	// (Expensive due to it needing to copy all 'left' and 'right' data over to new buffer!)
 	void Grow()
 	{
-		const size_t newSize = m_BufferSize * m_sGrowSizeFactor;
+		// 0 1 2 | - - | 3 4 5 
+		// After Grow (grow factor of 2):
+		// 0 1 2 | - - - - - - - - - - | 3 4 5 
+
+		const size_t newSize = m_BufferCount * m_sGrowSizeFactor;
 		Type* pNewBuffer = new Type[newSize];
 
-		const size_t leftSize = (size_t)(m_pBufferStart - m_pGapStart);
-		const size_t rightSize = m_BufferSize - leftSize + m_GapSize;
+		const size_t leftSize = (size_t)(m_pGapStart - m_pBufferStart);
+		const size_t rightSize = m_BufferCount - leftSize - m_GapCount;
 		const size_t newGapSize = newSize - leftSize - rightSize;
 
 		// Update scratch buffer size
-		if (newGapSize > m_GapScratchBufferSize)
+		if (newGapSize > m_GapScratchBufferCount)
 		{
 			if (m_pGapScratchBuffer)
 				delete[] m_pGapScratchBuffer;
-			m_pGapScratchBuffer = new Type[m_GapSize];
+			m_pGapScratchBuffer = new Type[m_GapCount];
 		}
 
 		// Copy Left buffer
-		std::memcpy(pNewBuffer, m_pBufferStart, leftSize);
+		std::memcpy(pNewBuffer, m_pBufferStart, sizeof(Type) * leftSize);
 
 		// Copy Right buffer
-		std::memcpy(pNewBuffer + leftSize + newGapSize, m_pGapStart + m_GapSize, rightSize);
+		std::memcpy(pNewBuffer + leftSize + newGapSize, m_pGapStart + m_GapCount, sizeof(Type) * rightSize);
 
 		// Update stored data pointers.
 		delete[] m_pBufferStart;
 		m_pBufferStart = pNewBuffer;
-		m_BufferSize = newSize;
+		m_BufferCount = newSize;
 
 		m_pGapStart = pNewBuffer + leftSize;
-		m_GapSize = newGapSize;
+		m_GapCount = newGapSize;
 
 		// Debug (Fill gap with specific data)
 #ifdef MSLP_DEBUG
-		std::memset(m_pGapStart, m_sDebugByte, m_GapSize);
+		std::memset(m_pGapStart, m_sDebugByte, sizeof(Type) * m_GapCount);
 #endif
 	}
+
+	// Grows the gap without copying data. This will 'erase' some data that was after the gap.
+	void GrowOverlap(size_t extraCount)
+	{
+		// 0 1 2 | - - - - | 3 4 5 
+		// ExtraCount = 2:
+		// 0 1 2 | - - - - 3 4 | 5 
+
+#ifdef MSLP_DEBUG
+		assert(extraCount <= (m_BufferCount - m_GapCount) && "Cannot erase more elements than the total amount!");
+		std::memset(m_pGapStart + m_GapCount, m_sDebugByte, sizeof(Type) * extraCount);
+#endif
+		m_GapCount += extraCount;
+
+		if (m_GapCount > m_GapScratchBufferCount)
+		{
+			if (m_pGapScratchBuffer)
+				delete[] m_pGapScratchBuffer;
+			m_pGapScratchBuffer = new Type[m_GapCount];
+		}
+	}
+
+	void Init(Type* pInitialData, size_t initialCount, size_t initialGapCount)
+	{
+		// Delete old data
+		if (m_pBufferStart)
+			Delete();
+
+#ifdef MSLP_DEBUG
+		assert(initialCount != 0 && initialGapCount != 0 && "Cannot initialize empty arrays!");
+#endif
+
+		m_BufferCount = initialCount + initialGapCount;
+		m_pBufferStart = new Type[m_BufferCount];
+
+		m_GapCount = initialGapCount;
+		m_pGapStart = m_pBufferStart;
+
+		m_pGapScratchBuffer = new Type[m_GapCount];
+
+		// Copy data
+		const size_t leftCount = (size_t)(m_pGapStart - m_pBufferStart);
+		const size_t rightCount = m_BufferCount - leftCount - m_GapCount;
+		std::memcpy(m_pBufferStart, pInitialData, sizeof(Type) * leftCount);
+		std::memcpy(m_pBufferStart + leftCount + m_GapCount, pInitialData + leftCount, sizeof(Type) * rightCount);
+
+#ifdef MSLP_DEBUG
+		std::memset(m_pGapStart, m_sDebugByte, sizeof(Type) * m_GapCount);
+#endif
+	}
+
+	void Delete()
+	{
+		if (m_pBufferStart)
+		{
+			delete[] m_pBufferStart;
+			m_pBufferStart = nullptr;
+			m_BufferCount = 0;
+		}
+		m_pGapStart = nullptr;
+		m_GapCount = 0;
+
+		if (m_pGapScratchBuffer)
+		{
+			delete[] m_pGapScratchBuffer;
+			m_pGapScratchBuffer = nullptr;
+			m_GapScratchBufferCount = 0;
+		}
+	}
+
+	size_t CalcLeftCount() const { return (size_t)(m_pGapStart - m_pBufferStart); }
+	size_t CalcRightCount() const { return m_BufferCount - CalcLeftCount() - m_GapCount; }
 
 private:
 	inline static const uint32_t m_sGrowSizeFactor = 2;
@@ -229,11 +306,11 @@ private:
 #endif
 
 	Type* m_pBufferStart = nullptr;
-	size_t m_BufferSize = 0;
+	size_t m_BufferCount = 0;
 
 	Type* m_pGapStart = nullptr;
-	size_t m_GapSize = 0;
+	size_t m_GapCount = 0;
 
 	Type* m_pGapScratchBuffer = nullptr; // Used for storing data that should be copied.
-	size_t m_GapScratchBufferSize = 0;
+	size_t m_GapScratchBufferCount = 0;
 };
