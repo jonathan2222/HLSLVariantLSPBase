@@ -9,9 +9,12 @@
 
 #include <iostream>
 #include <format>
+#include <variant>
 
 #include "GapBuffer.h"
 #include "LineTracker.h"
+#include "FileBuffer.h"
+
 #include "StringUtils.h"
 
 void _SendMessage(lsp::MessageHandler& messageHandler, const std::string& message)
@@ -39,46 +42,6 @@ void _SendLog(lsp::MessageHandler& messageHandler, const std::string& message)
 // Used for all communication between server and client.
 lsp::MessageHandler* g_pMessageHandler = nullptr;
 
-struct FileBuffer : public GapBuffer<char>, LineTracker
-{
-    FileBuffer() : GapBuffer() {}
-
-    FileBuffer(const char* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex = 0u)
-        : GapBuffer(pInitialData, initialCount, initialGapCount, initialGapIndex)
-        , LineTracker(pInitialData, initialCount)
-    {
-    }
-
-    void Create(const char* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex = 0u)
-    {
-        GapBuffer::Create(pInitialData, initialCount, initialGapCount, initialGapIndex);
-        LineTracker::Create(pInitialData, initialCount);
-    }
-
-    char* CopyData(bool nullTerminated) const
-    {
-        char* pData = GapBuffer<char>::CopyData(nullTerminated ? 1u : 0u);
-        if (nullTerminated)
-            pData[GetDataCount()] = '\0';
-        return pData;
-    }
-
-    void ReplaceAt(const std::string& text, const lsp::Range& fromRange)
-    {
-        const uint32_t startByteOffset = FetchByteOffset(fromRange.start);
-        const uint32_t endByteOffset = FetchByteOffset(fromRange.end);
-
-        // Modify m_LinePoionter to reflect the edit.
-        ModifyRange(text.data(), text.size(), fromRange);
-
-        // First erase
-        Erase(startByteOffset, endByteOffset - startByteOffset);
-
-        // Then add
-        Insert(startByteOffset, text.c_str(), text.size());
-    }
-};
-
 struct Walker
 {
 private:
@@ -86,57 +49,84 @@ private:
     TSTree* m_pCurrentTree = nullptr;
     FileBuffer m_FileBuffer;
 
-    uint32_t FetchByteOffsetFromPosition(const lsp::Position& position)
-    {
-        // What to do here?
-
-        return 0u;
-    }
-
 public:
     Walker() { InitTreeSitter(); }
     ~Walker() { DeleteTreeSitter(); }
 
     // text: The text to replace the text in the range.
     // (optional) range: The range of the document that got changed
-    void Parse(const std::string& text, const lsp::Range* pRange = nullptr)
+    void Parse(const char* pText, size_t textLength, const lsp::Range* pRange = nullptr)
     {
         if (m_pParser != nullptr && pRange == nullptr)
             ts_parser_reset(m_pParser);
 
         // An edit occured.
-        if (pRange != nullptr)
+        if (pRange != nullptr && m_pCurrentTree != nullptr)
         {
-            // A row of 0 here means no change in row. If row == 0 then character is an offset of the start.
-            // But if row != 0 the character is the new character position.
-            lsp::Position newPositionOffset = Utils::FetchPositionFromText(text);
-
             TSInputEdit inputEdit;
             inputEdit.start_point = { .row = pRange->start.line, .column = pRange->start.character };
             inputEdit.old_end_point = { .row = pRange->end.line, .column = pRange->end.character };
-            inputEdit.start_byte = FetchByteOffsetFromPosition(pRange->start);
-            inputEdit.old_end_byte = FetchByteOffsetFromPosition(pRange->end);
-            inputEdit.new_end_point =
-            {
-                .row = newPositionOffset.line,
-                .column = newPositionOffset.line == 0 ? newPositionOffset.character : inputEdit.start_point.column + newPositionOffset.character
-            };
-            inputEdit.new_end_byte = inputEdit.old_end_byte + text.size();
+            inputEdit.start_byte = m_FileBuffer.FetchByteOffset(pRange->start);
+            inputEdit.old_end_byte = m_FileBuffer.FetchByteOffset(pRange->end);
+
+            lsp::Range newRange = m_FileBuffer.ReplaceAt(pText, textLength, *pRange);
+            inputEdit.new_end_point = { .row = newRange.end.line, .column = newRange.end.character };
+            inputEdit.new_end_byte = m_FileBuffer.FetchByteOffset(newRange.end);
             ts_tree_edit(m_pCurrentTree, &inputEdit);
         }
+        else
+        {
+            m_FileBuffer.Create(pText, textLength);
+        }
 
-        TSTree* pTree = ts_parser_parse_string(m_pParser, m_pCurrentTree, text.c_str(), (uint32_t)text.size());
-        TSNode rootNode = ts_tree_root_node(pTree);
-        char* pString = ts_node_string(rootNode);
-        std::string msg = pString;
-        SendLog(msg);
-        free(pString);
-        ts_tree_delete(pTree);
+        const char* pFullTex = m_FileBuffer.CopyText(false);
+        uint32_t fullTextSize = m_FileBuffer.GetLength();
+        m_pCurrentTree = ts_parser_parse_string(m_pParser, m_pCurrentTree, pFullTex, fullTextSize);
+
+        std::string debugTreeStr = FetchDebugTreeStr();
+        SendLog(debugTreeStr);
     }
 
     TSParser* GetParser() { return m_pParser; }
 
+    std::string GetTreeString()
+    {
+        TSNode rootNode = ts_tree_root_node(m_pCurrentTree);
+        char* pString = ts_node_string(rootNode);
+        std::string msg = pString;
+        free(pString);
+        return msg;
+    }
+
+    std::string FetchDebugTreeStr()
+    {
+        std::string debugStr;
+        TSNode rootNode = ts_tree_root_node(m_pCurrentTree);
+        WalkTree(rootNode, 0, debugStr);
+        return debugStr;
+    }
+
 private:
+    void WalkTree(TSNode node, uint32_t depth, std::string& debugOutput)
+    {
+        uint32_t childCount = ts_node_child_count(node);
+
+        TSPoint startPoint = ts_node_start_point(node);
+        uint32_t startByte = ts_node_start_byte(node);
+        TSPoint endPoint = ts_node_end_point(node);
+        uint32_t endByte = ts_node_end_byte(node);
+        for (uint32_t i = 0; i < depth; ++i)
+            debugOutput += " ";
+        debugOutput += std::format("{}\t[{}:{} - {}:{}] [{} - {}]\n",
+            ts_node_type(node), startPoint.row, startPoint.column, endPoint.row, endPoint.column, startByte, endByte);
+
+        for (uint32_t i = 0; i < childCount; ++i)
+        {
+            TSNode child = ts_node_child(node, i);
+            WalkTree(child, depth+1, debugOutput);
+        }
+    }
+
     void InitTreeSitter()
     {
         m_pParser = ts_parser_new();
@@ -154,6 +144,59 @@ private:
     }
 };
 
+#ifdef MSLP_DEBUG
+
+namespace DebugWalker
+{
+    void UnitTest()
+    {
+        // Test 1
+        {
+            Walker walker;
+            const char* text =
+                "int a;\r\n"
+                "bool b;\r\n"
+                "int c = foo();\r\n"
+                "if (c)\r\n"
+                "\tPrint(\"Error\");\r\n";
+            walker.Parse(text, strlen(text));
+            std::string result = walker.GetTreeString();
+            std::string debugRes = walker.FetchDebugTreeStr();
+
+            lsp::Range editRange;
+            editRange.start = { .line = 3, .character = 0 };
+            editRange.end = { .line = 4, .character = 1 };
+            walker.Parse("", 0u, &editRange);
+            result = walker.GetTreeString();
+            debugRes = walker.FetchDebugTreeStr();
+
+            result = "";
+        }
+
+        // Test 2
+        {
+            Walker walker;
+            const char* text =
+                "float foo(float3 v)\r\n"
+                "{\r\n"
+                "\treturn v.x;\r\n"
+                "}\r\n";
+            walker.Parse(text, strlen(text));
+            std::string result = walker.GetTreeString();
+
+            lsp::Range editRange;
+            editRange.start = { .line = 0, .character = 5 };
+            editRange.end = { .line = 0, .character = 5 };
+            walker.Parse("3", 0u, &editRange);
+            result = walker.GetTreeString();
+
+            result = "";
+        }
+    }
+}
+
+#endif
+
 int main()
 {
     std::string bufferStr, scratchStr;
@@ -161,6 +204,7 @@ int main()
 #ifdef MSLP_DEBUG
     DebugGapBuffer::UnitTest();
     DebugLineTracker::UnitTest();
+    //DebugWalker::UnitTest();
 #endif
 
     Walker walker;
@@ -183,7 +227,7 @@ int main()
                 // Alternatively do processing asynchronously and return a std::future here
                 lsp::TextDocumentSyncOptions syncOptions;
                 syncOptions.openClose = true;
-                syncOptions.change = lsp::TextDocumentSyncKind::Full;
+                syncOptions.change = lsp::TextDocumentSyncKind::Incremental;
                 result.capabilities.textDocumentSync = syncOptions;
 
                 SendMessage("Testing LSP V2");
@@ -200,27 +244,26 @@ int main()
                 SendMessage(std::format("Opened TextDocument: {}", params.textDocument.uri.path().c_str()));
 
                 std::string& text = params.textDocument.text;
-                TSTree* pTree = ts_parser_parse_string(walker.GetParser(), NULL, text.c_str(), (uint32_t)text.size());
-                TSNode rootNode = ts_tree_root_node(pTree);
-                char* pString = ts_node_string(rootNode);
-                std::string msg = pString;
-                SendLog(msg);
-                free(pString);
-                ts_tree_delete(pTree);
+                walker.Parse(text.c_str(), text.size());
             })
         .add<lsp::notifications::TextDocument_DidChange>([&walker](lsp::DidChangeTextDocumentParams&& params)
             {
                 SendMessage(std::format("Changed TextDocument: {}", params.textDocument.uri.path().c_str()));
 
-                lsp::TextDocumentContentChangeEvent_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Text>(params.contentChanges[0]);
-                TSTree* pTree = ts_parser_parse_string(walker.GetParser(), NULL, textEvent.text.c_str(), (uint32_t)textEvent.text.size());
-
-                TSNode rootNode = ts_tree_root_node(pTree);
-                char* pString = ts_node_string(rootNode);
-                std::string msg = pString;
-                SendLog(msg);
-                free(pString);
-                ts_tree_delete(pTree);
+                for (uint32_t changeIndex = 0; changeIndex < params.contentChanges.size(); ++changeIndex)
+                {
+                    lsp::TextDocumentContentChangeEvent& changeEvent = params.contentChanges[changeIndex];
+                    if (std::holds_alternative<lsp::TextDocumentContentChangeEvent_Range_Text>(changeEvent))
+                    {
+                        lsp::TextDocumentContentChangeEvent_Range_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Range_Text>(changeEvent);
+                        walker.Parse(textEvent.text.c_str(), textEvent.text.size(), &textEvent.range);
+                    }
+                    else
+                    {
+                        lsp::TextDocumentContentChangeEvent_Text& textEvent = std::get<lsp::TextDocumentContentChangeEvent_Text>(changeEvent);
+                        walker.Parse(textEvent.text.c_str(), textEvent.text.size());
+                    }
+                }
             })
         .add<lsp::notifications::TextDocument_DidClose>([](lsp::DidCloseTextDocumentParams&& params)
             {

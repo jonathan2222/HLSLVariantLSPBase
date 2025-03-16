@@ -14,6 +14,8 @@ struct LineTracker
 
     void Create(const char* pText, size_t textLength)
     {
+        m_LineOffsets.clear();
+
         lsp::Range range;
         range.start = { .line = 0, .character = 0 };
         range.end = { .line = 0, .character = 0 };
@@ -34,8 +36,12 @@ struct LineTracker
         return FetchByteOffset(position.line) + position.character;
     }
 
-    void ModifyRange(const char* text, size_t textLength, const lsp::Range& range)
+    lsp::Range ModifyRange(const char* text, size_t textLength, const lsp::Range& range)
     {
+        lsp::Range newRange;
+        newRange.start = range.start;
+        newRange.end = newRange.start;
+
         const uint64_t startByteOffset = FetchByteOffset(range.start);
         const uint64_t endByteOffset = FetchByteOffset(range.end);
         const int64_t oldBytesRange = (int64_t)(endByteOffset - startByteOffset);
@@ -83,9 +89,14 @@ struct LineTracker
         }
 
         // Lines in this needs to be updated.
+        uint32_t validCharIndex = 0; // Ignoring '\r'
         for (uint32_t i = 0, currentLine = range.start.line; i < textLength; ++i)
         {
             char c = text[i];
+            if (c == '\r') // Ignore r.
+                continue;
+
+            validCharIndex++;
             if (c == '\n')
             {
                 newLineRange++;
@@ -103,7 +114,13 @@ struct LineTracker
                     oldRangeLineData.push_back(m_LineOffsets[currentLine]);
                     m_LineOffsets[currentLine] = currentByteOffset;
                 }
+
+                // Update new range
+                newRange.end.character = 0;
+                newRange.end.line = currentLine;
             }
+
+            newRange.end.character++;
         }
 
         // If positive: bytes were added, negative: bytes were removed.
@@ -156,6 +173,8 @@ struct LineTracker
                 m_LineOffsets[line] = (uint64_t)(byteOffset + bytesAdded);
             }
         }
+
+        return newRange;
     }
 
     const std::vector<uint64_t>& GetOffsets() const
@@ -208,7 +227,9 @@ namespace DebugLineTracker
         lsp::Range editRange;
         editRange.start = { .line = 3, .character = 0 };
         editRange.end = { .line = 4, .character = 0 };
-        lineTracker.ModifyRange("", 0u, editRange);
+        lsp::Range newRange = lineTracker.ModifyRange("", 0u, editRange);
+        assert(newRange.start.line == 3 && newRange.start.character == 0);
+        assert(newRange.end.line == 3 && newRange.end.character == 0);
 
         uint64_t arr2[] = { 0u, 7u, 15u, 30u, 47u };
         assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr2)));
@@ -235,7 +256,9 @@ namespace DebugLineTracker
 
         editRange.start = { .line = 1, .character = 5 };
         editRange.end = { .line = 1, .character = 6 };
-        lineTracker.ModifyRange("e = false", 9u, editRange);
+        newRange = lineTracker.ModifyRange("e = false", 9u, editRange);
+        assert(newRange.start.line == 1 && newRange.start.character == 5);
+        assert(newRange.end.line == 1 && newRange.end.character == 14);
 
         uint64_t arr3[] = { 0u, 7u, 23u, 38u, 55u };
         assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr3)));
