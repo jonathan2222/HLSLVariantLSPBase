@@ -131,6 +131,9 @@ public:
 	// index: The index before it will be inserted. The element at that position will be on the right side of this index after insertion.
 	void Insert(size_t index, const Type* pData, size_t dataCount)
 	{
+		if (dataCount == 0u || pData == nullptr)
+			return;
+
 #ifdef MSLP_DEBUG
 		assert(IsInitialized());
 #endif
@@ -159,6 +162,9 @@ public:
 
 	void Erase(size_t index, size_t count = 1u)
 	{
+		if (count == 0u)
+			return;
+
 #ifdef MSLP_DEBUG
 		assert(IsInitialized());
 #endif

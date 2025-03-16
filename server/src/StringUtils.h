@@ -4,6 +4,9 @@
 
 #include <string>
 
+#include <lsp/types.h>
+#include <string>
+
 namespace Utils
 {
 	// A line of 0 here means no change in line. If line == 0 then character is an offset of the start.
@@ -20,5 +23,6 @@ namespace Utils
 				position.character = 0;
 			}
 		}
+		return position;
 	}
 }
