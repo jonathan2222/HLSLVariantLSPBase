@@ -52,25 +52,7 @@ struct LineTracker
 
         const uint64_t startByteOffset = FetchByteOffset(range.start);
         const uint64_t endByteOffset = FetchByteOffset(range.end);
-        const int64_t removeByteCount = (int64_t)(endByteOffset - startByteOffset);
-
-        //     removeByteCount = 5    
-        // [0] .....      [0] .....  
-        // [1] |....   -> [1] ...... 
-        // [2] .|......   [2]        
-        // [3]                        
-
-        //     removeByteCount = 4  
-        // [0] |....|    [0] ....   
-        // [1] ....   -> [1] ...... 
-        // [2] ......    [2]        
-        // [3]                      
-
-        //     removeByteCount = 3     
-        // [0] .....      [0] .....    
-        // [1] ..|..   -> [1] ........ 
-        // [2] .|......   [2]          
-        // [3]                         
+        const uint64_t removeByteCount = endByteOffset - startByteOffset;
 
         uint64_t oldFileSize = m_FileSize;
 #ifdef MSLP_DEBUG
@@ -83,52 +65,64 @@ struct LineTracker
             return;
         }
 
-        // Remove "e = false;\nint c = foo" from:
-        // [0] int a;\n
-        // [1] bool e = false;\n
-        // [2] int c = foo();\n
-        // [3] Print(\"Error\");\n
-        // Result:
-        // [0] int a;\n
-        // [1] bool ();\n
-        // [2] Print(\"Error\");\n
+        //     linesToRemove   = 1   
+        //     removeByteCount = 5   
+        // [0] .....      [0] .....  
+        // [1] |....   -> [1] ...... 
+        // [2] .|......   [2]        
+        // [3]                       
 
-        /*Example document:
-            Line    Text
-            [0]     int a;\n
-            [1]     bool b;\n
-            [2]     int c = foo();\n
-            [3]     if (c)\n
-            [4]     \tPrint(\"Error\");\n
+        //     linesToRemove   = 0  
+        //     removeByteCount = 4  
+        // [0] |....|    [0] ....   
+        // [1] ....   -> [1] ...... 
+        // [2] ......    [2]        
+        // [3]                      
 
-            Edit (Removing "if (c)\n\t"):
-            Range: {[3:0], [4:1]}
-            text: ""
+        //     linesToRemove   = 1     
+        //     removeByteCount = 3     
+        // [0] .....      [0] .....    
+        // [1] ..|..   -> [1] ........ 
+        // [2] .|......   [2]          
+        // [3]                         
 
-            Result document:
-            Line    Text
-            [0]     int a;\n
-            [1]     bool b;\n
-            [2]     int c = foo();\n
-            [3]     Print(\"Error\");\n
-        */
-
-        // Only the last line in the range need to be change differently compared to the lines after it.
-        if (range.end.line < m_LineOffsets.size() && range.start.line != range.end.line)
-        {
-            int64_t lastLineOffset = (int64_t)range.end.character;
-            if (range.start.character != 0u)
-                lastLineOffset = 0u;
-            m_LineOffsets[range.end.line] -= removeByteCount - lastLineOffset;
-        }
+        //     linesToRemove   = 2     
+        //     removeByteCount = 9     
+        // [0] .....      [0] .....    
+        // [1] ..|..   -> [1] ........ 
+        // [2] ......     [2]          
+        // [3] .|......                
+        // [4]                         
 
         uint32_t linesToRemove = range.end.line - range.start.line;
 
-        for (uint32_t line = range.end.line + 1u; line < m_LineOffsets.size(); ++line)
-            m_LineOffsets[line] -= removeByteCount;
+        // Change offset of all lines after this.
+        if (linesToRemove == 0)
+        {
+            for (uint32_t line = range.end.line + 1u; line < m_LineOffsets.size(); ++line)
+                m_LineOffsets[line] -= removeByteCount;
+        }
+        else
+        {
+            // Add offsets to line start+1:
+            //   (A) Compensating for what is left of line end: [(end+1).offset - (end.offset + end.character)]
+            uint64_t endP1 = range.end.line + 1 < m_LineOffsets.size() ? m_LineOffsets[range.end.line+1u] : oldFileSize - 1u;
+            int64_t addedLineBytes = (int64_t)endP1 - (int64_t)(m_LineOffsets[range.end.line] + range.end.character);
 
-        if (linesToRemove > 0)
-            m_LineOffsets.erase(m_LineOffsets.begin() + range.end.line - linesToRemove, m_LineOffsets.begin() + range.end.line);
+            //   (B) Compensating for what was removed from line start: -[(start+1).offset - (start.offset + start.character)]
+            int64_t removedLineBytes = (int64_t)m_LineOffsets[range.start.line+1u] - (int64_t)(m_LineOffsets[range.start.line] + range.start.character);
+            
+            uint64_t lineStartNextNewOffset = m_LineOffsets[range.start.line + 1] + (addedLineBytes - removedLineBytes);
+
+            // Then we remove the lines (start, end].
+            m_LineOffsets.erase(m_LineOffsets.begin() + range.start.line + 1u, m_LineOffsets.begin() + range.end.line + 1u);
+
+            m_LineOffsets[range.start.line + 1] = lineStartNextNewOffset;
+
+            // After which we do the same as the case for linesToRemove == 0
+            for (uint32_t line = range.start.line + 2u; line < m_LineOffsets.size(); ++line)
+                m_LineOffsets[line] -= removeByteCount;
+        }
     }
 
     lsp::Range AddText(const char* text, size_t textLength, const lsp::Position& position)
@@ -147,23 +141,42 @@ struct LineTracker
         uint64_t bytesAdded = textLength;
         m_FileSize += bytesAdded;
 
-        //     bytesAdded = 5        
+        //     addedLines = 0              
+        //     bytesAdded = 10             
+        // [0] .....      [0] .....        
+        // [1] |...... -> [1] |....|...... 
+        // [2]            [2]              
+        // 
+        //     addedLines = 1         
+        //     bytesAdded = 5         
         // [0] .....      [0] .....   
         // [1] |...... -> [1] |....   
         // [2]            [2] .|......
         //                [3]         
 
-        //     bytesAdded = 4       
+        //     addedLines = 1        
+        //     bytesAdded = 4        
         // [0] |....      [0] |....| 
         // [1] ...... ->  [1] ....   
         // [2]            [2] ...... 
         //                [3]        
 
-        //     bytesAdded = 3          
+        //     addedLines = 1           
+        //     bytesAdded = 3           
         // [0] .....        [0] .....   
         // [1] ..|...... -> [1] ..|..   
         // [2]              [2] .|......
         //                  [3]         
+
+        //     addedLines = 2           
+        //     bytesAdded = 9           
+        // [0] .....        [0] .....   
+        // [1] ..|...... -> [1] ..|..   
+        // [2]              [2] ......  
+        //                  [3] .|......
+        //                  [4]         
+
+        std::vector<uint64_t> newLines;
 
         const uint64_t startByteOffset = FetchByteOffset(position);
         for (uint32_t i = 0, currentLine = position.line; i < textLength; ++i)
@@ -181,28 +194,28 @@ struct LineTracker
                 uint64_t currentByteOffset = startByteOffset + i + 1;
 
                 // If this is a line number we have not seen, we will add it.
-                if (currentLine >= m_LineOffsets.size())
-                    m_LineOffsets.push_back(currentByteOffset);
-                else
-                    m_LineOffsets[currentLine] = currentByteOffset;
+                //if (currentLine >= m_LineOffsets.size())
+                //    m_LineOffsets.push_back(currentByteOffset);
+                //else
+                //    m_LineOffsets[currentLine] = currentByteOffset;
+
+                newLines.push_back(currentByteOffset);
 
                 // Update new range
                 newRange.end.character = 0;
                 newRange.end.line = currentLine;
             }
-
-            if (i != textLength - 1 || c != '\n')
+            else
                 newRange.end.character++;
         }
 
-        // Only the last line in the range need to be change differently compared to the lines after it.
-        if (newRange.end.line < m_LineOffsets.size() && newRange.end.character != 0u &&
-            position.line != newRange.end.line)
-        {
-            int64_t lastLineOffset = (int64_t)newRange.end.character;
-            m_LineOffsets[newRange.end.line] += bytesAdded - lastLineOffset;
-        }
+        // Insert line offsets (start, new.end]
+        uint32_t linesAdded = newRange.end.line - newRange.start.line;
 
+        if (linesAdded > 0)
+            m_LineOffsets.insert(m_LineOffsets.begin() + newRange.start.line + 1u, newLines.begin(), newLines.end());
+
+        // Update offsets of all lines from end+1
         for (uint32_t line = newRange.end.line + 1u; line < m_LineOffsets.size(); ++line)
             m_LineOffsets[line] += bytesAdded;
 
@@ -354,10 +367,9 @@ namespace DebugLineTracker
         // [3] Print(\"Error\");\n
         const char* text3 =
             "b;\n"
-            "float c = K";
-        editRange.start = { .line = 1, .character = 5 };
-        editRange.end = { .line = 2, .character = 11 };
-        newRange = lineTracker.AddText(text3, strlen(text3), editRange.start);
+            "float c = Ko";
+        lsp::Position position = { .line = 1, .character = 5 };
+        newRange = lineTracker.AddText(text3, strlen(text3), position);
         assert(newRange.start.line == 1 && newRange.start.character == 5);
         assert(newRange.end.line == 2 && newRange.end.character == 12);
 
