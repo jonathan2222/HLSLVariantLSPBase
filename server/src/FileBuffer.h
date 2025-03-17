@@ -19,11 +19,10 @@ struct FileBuffer
         m_LineTracker.Create(pInitialData, initialCount);
     }
 
-    char* CopyText(bool nullTerminated) const
+    char* CopyText() const
     {
-        char* pData = m_GapBuffer.CopyData(nullTerminated ? 1u : 0u);
-        if (nullTerminated)
-            pData[m_GapBuffer.GetDataCount()] = '\0';
+        char* pData = m_GapBuffer.CopyData(1u);
+        pData[m_GapBuffer.GetDataCount()] = '\0';
         return pData;
     }
 
@@ -44,8 +43,8 @@ struct FileBuffer
 
     lsp::Range ReplaceAt(const char* pText, size_t textLength, const lsp::Range& fromRange)
     {
-        const uint32_t startByteOffset = m_LineTracker.FetchByteOffset(fromRange.start);
-        const uint32_t endByteOffset = m_LineTracker.FetchByteOffset(fromRange.end);
+        const uint64_t startByteOffset = m_LineTracker.FetchByteOffset(fromRange.start);
+        const uint64_t endByteOffset = m_LineTracker.FetchByteOffset(fromRange.end);
 
         // Modify m_LinePoionter to reflect the edit.
         lsp::Range newRange = m_LineTracker.ModifyRange(pText, textLength, fromRange);

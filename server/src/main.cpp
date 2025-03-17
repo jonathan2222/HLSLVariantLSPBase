@@ -66,12 +66,12 @@ public:
             TSInputEdit inputEdit;
             inputEdit.start_point = { .row = pRange->start.line, .column = pRange->start.character };
             inputEdit.old_end_point = { .row = pRange->end.line, .column = pRange->end.character };
-            inputEdit.start_byte = m_FileBuffer.FetchByteOffset(pRange->start);
-            inputEdit.old_end_byte = m_FileBuffer.FetchByteOffset(pRange->end);
+            inputEdit.start_byte = (uint32_t)m_FileBuffer.FetchByteOffset(pRange->start);
+            inputEdit.old_end_byte = (uint32_t)m_FileBuffer.FetchByteOffset(pRange->end);
 
             lsp::Range newRange = m_FileBuffer.ReplaceAt(pText, textLength, *pRange);
             inputEdit.new_end_point = { .row = newRange.end.line, .column = newRange.end.character };
-            inputEdit.new_end_byte = m_FileBuffer.FetchByteOffset(newRange.end);
+            inputEdit.new_end_byte = (uint32_t)m_FileBuffer.FetchByteOffset(newRange.end);
             ts_tree_edit(m_pCurrentTree, &inputEdit);
         }
         else
@@ -79,8 +79,8 @@ public:
             m_FileBuffer.Create(pText, textLength);
         }
 
-        const char* pFullTex = m_FileBuffer.CopyText(false);
-        uint32_t fullTextSize = m_FileBuffer.GetLength();
+        const char* pFullTex = m_FileBuffer.CopyText();
+        uint32_t fullTextSize = (uint32_t)m_FileBuffer.GetLength();
         m_pCurrentTree = ts_parser_parse_string(m_pParser, m_pCurrentTree, pFullTex, fullTextSize);
 
         std::string debugTreeStr = FetchDebugTreeStr();

@@ -31,6 +31,9 @@ public:
 		assert(IsInitialized());
 #endif
 
+		if (steps == 0u)
+			return;
+
 		// At the left most position.
 		// | - - - - - | 0 1 2 3 4 5 6 7 8 9
 		if (m_pGapStart == m_pBufferStart)
@@ -81,6 +84,9 @@ public:
 #ifdef MSLP_DEBUG
 		assert(IsInitialized());
 #endif
+
+		if (steps == 0u)
+			return;
 
 		// At the right most position.
 		// 0 1 2 3 4 5 6 7 8 9 | - - - - - |
@@ -206,6 +212,14 @@ public:
 		const size_t leftCount = CalcLeftCount();
 		const size_t rightCount = CalcRightCount(leftCount);
 		const size_t count = leftCount + rightCount;
+
+		if (count == 0u)
+		{
+#ifdef MSLP_DEBUG
+			assert(extraSpace != 0);
+#endif
+			return new Type[extraSpace];
+		}
 
 #ifdef MSLP_DEBUG
 		assert(IsInitialized());
