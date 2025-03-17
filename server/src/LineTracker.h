@@ -19,6 +19,12 @@ struct LineTracker
         Create(pText, textLength);
     }
 
+    void Clear()
+    {
+        m_LineOffsets.clear();
+        m_FileSize = 0u;
+    }
+
     void Create(const char* pText, size_t textLength)
     {
         m_LineOffsets.clear();
@@ -375,6 +381,30 @@ namespace DebugLineTracker
 
         uint64_t arr5[] = { 0u, 7u, 15u, 31u, 47u };
         assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr5), EqualTo));
+
+        /*
+        *   flaot a;\n
+        *   flaot b;\n
+        *   flaot c;\n
+        * 
+        * Remove gives:
+        *   flaot a;\n
+        *   flaot b;\n
+        */
+
+        lineTracker.Clear();
+        const char* text4 =
+            "flaot a;\n"
+            "flaot b;\n"
+            "flaot c;\n";
+        lineTracker.Create(text4, strlen(text4));
+
+        editRange.start = { .line = 1, .character = 17 };
+        editRange.end = { .line = 2, .character = 27 };
+        lineTracker.RemoveText(editRange);
+
+        uint64_t arr6[] = { 0u, 9u };
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr6), EqualTo));
     }
 }
 

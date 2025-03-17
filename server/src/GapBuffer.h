@@ -42,7 +42,7 @@ public:
 		// Move gap position to the left, clamping it to the buffer start position if outside.
 		Type* pNewGapStart = m_pGapStart;
 		const size_t leftCount = CalcLeftCount();
-		if (leftCount > steps)
+		if (leftCount >= steps)
 			pNewGapStart -= steps;
 		else
 		{
@@ -96,7 +96,7 @@ public:
 		// Move gap position to the right, clamping it to the buffer end position if outside.
 		Type* pNewGapStart = m_pGapStart;
 		const size_t rightCount = CalcRightCount();
-		if (rightCount > steps)
+		if (rightCount >= steps)
 			pNewGapStart += steps;
 		else
 		{
@@ -107,9 +107,9 @@ public:
 		// Move data
 		if (steps == 1u)
 		{
-			*pNewGapStart = *(pNewGapStart + m_GapCount);
+			*m_pGapStart = *(m_pGapStart + m_GapCount);
 #ifdef MSLP_DEBUG
-			*(pNewGapStart + m_GapCount) = m_sDebugByte;
+			*(m_pGapStart + m_GapCount) = m_sDebugByte;
 #endif
 		}
 		else
@@ -126,7 +126,7 @@ public:
 				std::memcpy(m_pGapStart, m_pGapStart + m_GapCount, sizeof(Type) * steps);
 			}
 #ifdef MSLP_DEBUG
-			std::memset(m_pGapStart + steps, m_sDebugByte, sizeof(Type) * m_GapCount);
+			std::memset(pNewGapStart, m_sDebugByte, sizeof(Type) * m_GapCount);
 #endif
 		}
 
@@ -341,7 +341,7 @@ protected:
 
 #ifdef MSLP_DEBUG
 		assert(initialGapCount != 0 && "Cannot initialize an empty gap!");
-		assert((pInitialData == nullptr && initialCount == 0) || (pInitialData != nullptr && initialCount > 0) && "pInitialData need to match the initialCount!");
+		//assert(((pInitialData == nullptr || pInitialData == "") && initialCount == 0) || (pInitialData != nullptr && initialCount > 0) && "pInitialData need to match the initialCount!");
 		assert(initialGapIndex <= initialCount && "Gap index out of bounds!");
 #endif
 
@@ -440,7 +440,10 @@ namespace DebugGapBuffer
 		gapBuffer.Left(4);
 		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
 		assert(bufferStr == "This is---------- a test string with even more data in it. For this is a great block of text.");
-		gapBuffer.Right(20);
+		gapBuffer.Right(1);
+		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
+		assert(bufferStr == "This is ----------a test string with even more data in it. For this is a great block of text.");
+		gapBuffer.Right(19);
 		gapBuffer.InspectBuffersAsStrings(bufferStr, scratchStr);
 		assert(bufferStr == "This is a test string with ----------even more data in it. For this is a great block of text.");
 		gapBuffer.Insert(9, " large", 6);
