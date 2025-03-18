@@ -1,2 +1,10 @@
 flaot a;
 flaot a;
+flaot a;
+
+struct a
+{
+    float4 v;
+    bool b;
+    int i;
+};

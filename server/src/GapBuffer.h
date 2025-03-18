@@ -15,6 +15,11 @@ public:
 		Init(pInitialData, initialCount, initialGapCount, initialGapIndex);
 	}
 
+	GapBuffer(const GapBuffer<Type>& other)
+	{
+		Copy(other);
+	}
+
 	virtual ~GapBuffer()
 	{
 		Delete();
@@ -23,6 +28,21 @@ public:
 	void Create(const Type* pInitialData, size_t initialCount, size_t initialGapCount, size_t initialGapIndex = 0u)
 	{
 		Init(pInitialData, initialCount, initialGapCount, initialGapIndex);
+	}
+
+	void Copy(const GapBuffer<Type>& other)
+	{
+		m_BufferCount = other.m_BufferCount;
+		m_GapCapacity = other.m_GapCapacity;
+		m_GapCount = other.m_GapCount;
+
+		m_pBufferStart = new Type[m_BufferCount];
+		std::memcpy(m_pBufferStart, other.m_pBufferStart, sizeof(Type) * m_BufferCount);
+
+		m_pGapStart = m_pBufferStart + (other.m_pBufferStart - other.m_pGapStart);
+
+		m_pGapScratchBuffer = new Type[m_GapCapacity];
+		std::memcpy(m_pGapScratchBuffer, other.m_pGapScratchBuffer, sizeof(Type) * m_GapCapacity);
 	}
 
 	void Left(size_t steps = 1u)
