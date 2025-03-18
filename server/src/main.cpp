@@ -66,6 +66,9 @@ const char* g_SemanticTokenModifiers[] =
     "static"
 };
 
+#define WriteLocker std::unique_lock<std::shared_mutex>
+#define ReadLocker std::shared_lock<std::shared_mutex>
+
 // Used for all communication between server and client.
 lsp::MessageHandler* g_pMessageHandler = nullptr;
 
@@ -82,8 +85,25 @@ struct TreeSitterData
     
     TreeSitterData(const TreeSitterData& other)
         : IsCopy(true)
+        , pTextBuffer(other.pTextBuffer)
+        , pTextBufferMutex(other.pTextBufferMutex)
     {
         pTree = ts_tree_copy(other.pTree);
+    }
+
+    void BeginReading()
+    {
+        pTextBufferMutex->lock_shared();
+    }
+
+    const std::string_view ReadString(uint32_t index, size_t length) const
+    {
+        return std::string_view(pTextBuffer + index, length);
+    }
+
+    void EndReading()
+    {
+        pTextBufferMutex->unlock_shared();
     }
 
 private:
@@ -94,6 +114,7 @@ private:
         pParser = ts_parser_new();
         ts_parser_set_language(pParser, g_Language);
 
+        pTextBufferMutex = new std::shared_mutex();
         pFileBuffer = new FileBuffer();
     }
 
@@ -103,27 +124,34 @@ private:
             ts_tree_delete(pTree);
         pTree = nullptr;
 
-        if (pParser == nullptr)
+        if (IsCopy)
             return;
 
-        ts_parser_delete(pParser);
+        if (pParser != nullptr)
+            ts_parser_delete(pParser);
 
+        if (pTextBuffer)
+            delete[] pTextBuffer;
+        if (pTextBufferMutex)
+            delete pTextBufferMutex;
         if (pFileBuffer)
             delete pFileBuffer;
 
         pParser = nullptr;
         pFileBuffer = nullptr;
+        pTextBufferMutex = nullptr;
+        pTextBuffer = nullptr;
     }
 
 private:
     friend struct Parser;
     TSParser* pParser = nullptr;
+    std::shared_mutex* pTextBufferMutex = nullptr;
+    const char* pTextBuffer = nullptr;
     FileBuffer* pFileBuffer = nullptr;
 };
 
 std::shared_mutex g_TreeSitterDataMutex;
-#define WriteLocker std::unique_lock<std::shared_mutex>
-#define ReadLocker std::shared_lock<std::shared_mutex>
 std::unordered_map<std::string, TreeSitterData> g_URIToTreeSitterData;
 
 void RemoveTreeSitterData(const lsp::FileURI& uri)
@@ -188,6 +216,13 @@ public:
         const char* pFullTex = data.pFileBuffer->CopyText();
         uint32_t fullTextSize = (uint32_t)data.pFileBuffer->GetLength();
         data.pTree = ts_parser_parse_string(data.pParser, data.pTree, pFullTex, fullTextSize);
+
+        {
+            WriteLocker lock(*data.pTextBufferMutex);
+            if (data.pTextBuffer)
+                delete[] data.pTextBuffer;
+            data.pTextBuffer = data.pFileBuffer->CopyText();
+        }
 
         std::string debugTreeStr = FetchDebugTreeStr(uri);
         SendLog(debugTreeStr);
@@ -349,6 +384,10 @@ int main()
             semanticTokensOptions.full = lsp::SemanticTokensOptionsFull();
             result.capabilities.semanticTokensProvider = semanticTokensOptions;
 
+            lsp::DocumentLinkOptions documentLinkOptions;
+            documentLinkOptions.resolveProvider = false;
+            result.capabilities.documentLinkProvider = documentLinkOptions;
+
             lsp::ClientCapabilities clientCapabilities = params.capabilities;
             if (clientCapabilities.textDocument.has_value()) // Weird if the client does not support this.
             {
@@ -415,6 +454,58 @@ int main()
     .add<lsp::notifications::TextDocument_DidClose>([](lsp::DidCloseTextDocumentParams&& params)
         {
             SendMessage(std::format("Closed TextDocument: {}", params.textDocument.uri.path().c_str()));
+        })
+    .add<lsp::requests::TextDocument_DocumentLink>([](const lsp::jsonrpc::MessageId& /*id*/,
+        lsp::requests::TextDocument_DocumentLink::Params&& params)
+        {
+            lsp::requests::TextDocument_DocumentLink::Result result;
+
+            std::vector<lsp::DocumentLink> documentLinks;
+            TreeSitterData tsData = FetchShallowCopy(params.textDocument.uri);
+
+            // Query is perfect for finding links.
+            const char* pQuerySource = "(preproc_include (string_literal (string_content) @link))";
+            uint32_t errorOffset = 0u;
+            TSQueryError errorType;
+            TSQuery* pQuery = ts_query_new(g_Language, pQuerySource, strlen(pQuerySource), &errorOffset, &errorType);
+
+            if (pQuery)
+            {
+                tsData.BeginReading();
+
+                TSNode rootNode = ts_tree_root_node(tsData.pTree);
+                TSQueryCursor* pCursor = ts_query_cursor_new();
+                ts_query_cursor_exec(pCursor, pQuery, rootNode);
+
+                uint32_t captureIndex;
+                TSQueryMatch queryMatch;
+                while (ts_query_cursor_next_capture(pCursor, &queryMatch, &captureIndex))
+                {
+                    // capture.index is the capture index in the query.
+                    const TSQueryCapture& capture = queryMatch.captures[captureIndex];
+                    uint32_t startByte = ts_node_start_byte(capture.node);
+                    uint32_t endByte = ts_node_end_byte(capture.node);
+                    TSPoint startPoint = ts_node_start_point(capture.node);
+                    TSPoint endPoint = ts_node_end_point(capture.node);
+
+                    const std::string_view stringConstant = tsData.ReadString(startByte, endByte - startByte);
+
+                    lsp::DocumentLink documentLink;
+                    documentLink.range.start = { .line = startPoint.row, .character = startPoint.column };
+                    documentLink.range.end = { .line = endPoint.row, .character = endPoint.column };
+                    documentLink.target = lsp::FileURI(stringConstant);
+                    documentLink.tooltip = stringConstant;
+                    documentLinks.push_back(documentLink);
+                }
+                tsData.EndReading();
+
+                ts_query_cursor_delete(pCursor);
+                ts_query_delete(pQuery);
+            }
+
+            if (documentLinks.empty() == false)
+                result = documentLinks;
+            return result;
         })
     .add<lsp::requests::TextDocument_SemanticTokens_Full>([](const lsp::jsonrpc::MessageId& /*id*/,
         lsp::requests::TextDocument_SemanticTokens_Full::Params&& params)
