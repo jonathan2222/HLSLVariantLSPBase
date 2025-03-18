@@ -7,10 +7,20 @@ This was developed on a windows machine, thus focused on the windows platform.
 
 Below are instructions on how to setup the project but also what steps was made from the start of the project. Hope this can help you who reads this to get started without going through the pain I did :D 
 
-**Dependencies:** `npm`, `cmake`, `msbuild`, `Visual Studio 2022`
-**Platform:** `windows`
 
+## Dependencies
+
+### Tools
+
+* `npm`, `cmake`, `msbuild`, `Visual Studio 2022`
+* **Platform:** `windows`
 * **Visual Studio 2022** is only needed for **PremakeVS2022.bat**, if you have another version, just change it inside that bat file.
+
+### Repos
+
+* **LSP-Framework:** https://github.com/leon-bckl/lsp-framework
+* **TreeSitter:** https://github.com/tree-sitter/tree-sitter
+* **TreeSitter-CPP:** https://github.com/tree-sitter/tree-sitter-cpp
 
 ## Build and compile server
 
