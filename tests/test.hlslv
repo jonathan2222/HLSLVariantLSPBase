@@ -1,5 +1,4 @@
 float3 Foo(in float2 v)
 {
-    float3 a;
     return v.x;
 }

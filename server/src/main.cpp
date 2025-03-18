@@ -154,6 +154,11 @@ public:
 
         std::string debugTreeStr = FetchDebugTreeStr(uri);
         SendLog(debugTreeStr);
+
+#ifdef MSLP_DEBUG
+        std::string debugFileBufferInfo = data.m_FileBuffer.DebugInspect();
+        SendLog(debugFileBufferInfo);
+#endif
     }
 
     std::string FetchDebugTreeStr(lsp::FileURI uri)

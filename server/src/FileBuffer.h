@@ -58,6 +58,25 @@ struct FileBuffer
         return newRange;
     }
 
+#ifdef MSLP_DEBUG
+    std::string DebugInspect()
+    {
+        std::string result;
+        std::string scratch;
+        m_GapBuffer.InspectBuffersAsStrings(result, scratch);
+
+        std::string lineTrackerInfo = std::format("LineTracker:\n\tFileSize: {}\n\tOffsets:\n", m_LineTracker.GetFileSize());
+        const std::vector<uint64_t>& offsets = m_LineTracker.GetOffsets();
+        for (uint32_t i = 0u; i < offsets.size(); ++i)
+        {
+            uint64_t lineOffset = offsets[i];
+            lineTrackerInfo += std::format("\t[{}] Offset: {}\n", i, lineOffset);
+        }
+
+        return std::format("GapBuffer:\n'{}'\n{}", result.c_str(), lineTrackerInfo.c_str());
+    }
+#endif
+
 private:
     inline static const size_t InitialGapCount = 256;
 

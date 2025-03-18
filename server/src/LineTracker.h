@@ -112,7 +112,7 @@ struct LineTracker
         {
             // Add offsets to line start+1:
             //   (A) Compensating for what is left of line end: [(end+1).offset - (end.offset + end.character)]
-            uint64_t endP1 = range.end.line + 1 < m_LineOffsets.size() ? m_LineOffsets[range.end.line+1u] : oldFileSize - 1u;
+            uint64_t endP1 = range.end.line + 1 < m_LineOffsets.size() ? m_LineOffsets[range.end.line+1u] : oldFileSize;
             int64_t addedLineBytes = (int64_t)endP1 - (int64_t)(m_LineOffsets[range.end.line] + range.end.character);
 
             //   (B) Compensating for what was removed from line start: -[(start+1).offset - (start.offset + start.character)]
@@ -123,7 +123,8 @@ struct LineTracker
             // Then we remove the lines (start, end].
             m_LineOffsets.erase(m_LineOffsets.begin() + range.start.line + 1u, m_LineOffsets.begin() + range.end.line + 1u);
 
-            m_LineOffsets[range.start.line + 1] = lineStartNextNewOffset;
+            if (range.start.line + 1 < m_LineOffsets.size())
+                m_LineOffsets[range.start.line + 1] = lineStartNextNewOffset;
 
             // After which we do the same as the case for linesToRemove == 0
             for (uint32_t line = range.start.line + 2u; line < m_LineOffsets.size(); ++line)
@@ -237,6 +238,11 @@ struct LineTracker
     const std::vector<uint64_t>& GetOffsets() const
     {
         return m_LineOffsets;
+    }
+
+    uint64_t GetFileSize() const
+    {
+        return m_FileSize;
     }
 
 private:
@@ -394,16 +400,16 @@ namespace DebugLineTracker
 
         lineTracker.Clear();
         const char* text4 =
-            "flaot a;\n"
-            "flaot b;\n"
-            "flaot c;\n";
+            "flaot a;\r\n"
+            "flaot b;\r\n"
+            "flaot c;";
         lineTracker.Create(text4, strlen(text4));
 
-        editRange.start = { .line = 1, .character = 17 };
-        editRange.end = { .line = 2, .character = 27 };
+        editRange.start = { .line = 1, .character = 8 };
+        editRange.end = { .line = 2, .character = 8 };
         lineTracker.RemoveText(editRange);
 
-        uint64_t arr6[] = { 0u, 9u };
+        uint64_t arr6[] = { 0u, 10u };
         assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr6), EqualTo));
     }
 }
