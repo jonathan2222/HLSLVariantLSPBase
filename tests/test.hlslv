@@ -1,3 +1,5 @@
+#define TEST_A
+
 float3 Foo(in float2 v)
 {
     return v.x;

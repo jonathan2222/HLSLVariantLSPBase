@@ -4,9 +4,22 @@ flaot a;
 flaot a;
 flaot a;
 
-struct a
+#ifdef TEST_A
+struct A
 {
     float4 v;
     bool b;
     int i;
 };
+#endif // TEST_A
+
+#ifdef TEST_B
+struct B
+{
+    float4 v;
+    bool b;
+    int i;
+    int i2;
+    int i3;
+};
+#endif // TEST_B

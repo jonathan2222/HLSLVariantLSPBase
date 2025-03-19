@@ -222,6 +222,36 @@ public:
             ts_tree_delete(data.pTree);
         data.pTree = pNewTree;
 
+        // TODO:
+        // * Parse tree for linting, semantic tokens, and diagnostics
+        //      * Go through the tree,
+        //          * If an include is found:
+        //              0. Add diagnostic about file path error etc. if any.
+        //              1. Add it to the dependency map [dep] -> source (Used for updating files when some included file was edited)
+        //              2. Compute hash
+        //              3. Compare hash to cache
+        //              4. If different, request parsing for it the same way (Meaning calling Parse(...)).
+        //              5. If same, but symbol table version is different, then add the symbol table from the include to our symbol table.
+        //          * Add to the semantic types list.
+        //          * Linting:
+        //              * Preproc:
+        //                  * If preproc ifdef/if, push to the stack.
+        //                      * Check if active, if not add deprecation diag to the next nodes until endif/else if seen.
+        //                              If inactive, avoid doing any other diags on these except maybe add symbols to a "deprecated" symbol table for navigation purposes?
+        //                  * If preproc endif, pop the stack.
+        //              * If object definition is seen, add to the symbol table (should include the name of symbol and location, maybe also the contents?).
+        //              * If function definition is seen, add to the symbol table (name, return type, and argument types).
+        //              * If function call is seen, check the symbol table if the arguments match.
+        //              * If variable declaration is seen, check if the type is in the symbol table, and add variable name to the symbol table.
+        //                  If already in the symbol table, then add diag for it.
+        //              * If variable is seen, check if it is in the symbol table. And if the variable is used in an expression, check if it is valid.
+        //              * Check for node syntax errors and add diag for them (missing ; or node is an ERROR or MISSING node etc.).
+        //      * Save to cache
+        //      * Tell Caller that the parsing is done by requesting parsing using the dependency map [this] -> some source.
+        //          (This will parse the caller again, and depending on the amount of it have includes, might even parse it multiple times.)
+        // * Request diagnostic refresh information fetched from the linting phase.
+        // * Request semantic types refresh, tokens fetched from the linting phase.
+
         {
             WriteLocker lock(*data.pTextBufferMutex);
             if (data.pTextBuffer)
@@ -229,6 +259,7 @@ public:
             data.pTextBuffer = data.pFileBuffer->CopyText();
         }
 
+#ifdef MSLP_DEBUG
         std::string debugTreeStr = FetchDebugTreeStr(uri);
         SendLog(debugTreeStr);
 
@@ -237,7 +268,6 @@ public:
         SendLog(sExpression);
         delete sExpression;
 
-#ifdef MSLP_DEBUG
         std::string debugFileBufferInfo = data.pFileBuffer->DebugInspect();
         SendLog(debugFileBufferInfo);
 #endif
