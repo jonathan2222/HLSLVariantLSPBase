@@ -2,16 +2,9 @@
 
 #include <lsp/types.h>
 #include <vector>
-//#include <algorithm> // std::min
 
 struct LineTracker
 {
-    //struct LineData
-    //{
-    //    uint64_t offset;
-    //    uint32_t length;
-    //};
-
     LineTracker() {}
 
     LineTracker(const char* pText, size_t textLength)
@@ -249,18 +242,16 @@ private:
 	// Index of the vector is the line number and the value is the byte offset of the data where the line starts.
 	std::vector<uint64_t> m_LineOffsets;
     uint64_t m_FileSize = 0u; // Size in characters.
-};
 
+public:
 #ifdef MSLP_DEBUG
 
-namespace DebugLineTracker
-{
-    bool EqualTo(uint64_t a, uint64_t b)
+    static bool _EqualTo(uint64_t a, uint64_t b)
     {
         return a == b;
     }
 
-    void UnitTest()
+    static void UnitTest()
     {
         /*Example document:
             Line    Text
@@ -291,7 +282,7 @@ namespace DebugLineTracker
         lineTracker.Create(text, strlen(text));
 
         uint64_t arr[] = { 0u, 7u, 15u, 30u, 37u, 54u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr), _EqualTo));
 
         lsp::Range editRange;
         editRange.start = { .line = 3, .character = 0 };
@@ -301,7 +292,7 @@ namespace DebugLineTracker
         assert(newRange.end.line == 3 && newRange.end.character == 0);
 
         uint64_t arr2[] = { 0u, 7u, 15u, 30u, 46u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr2), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr2), _EqualTo));
 
         /*Example document:
             Line    Text
@@ -330,7 +321,7 @@ namespace DebugLineTracker
         assert(newRange.end.line == 1 && newRange.end.character == 14);
 
         uint64_t arr3[] = { 0u, 7u, 23u, 38u, 54u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr3), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr3), _EqualTo));
 
         // Erase
         editRange.start = { .line = 0, .character = 0 };
@@ -353,7 +344,7 @@ namespace DebugLineTracker
         assert(newRange.start.line == 0 && newRange.start.character == 0);
         assert(newRange.end.line == 4 && newRange.end.character == 0);
 
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr3), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr3), _EqualTo));
 
         // Replace from:
         // [0] int a;\n
@@ -370,7 +361,7 @@ namespace DebugLineTracker
         lineTracker.RemoveText(editRange);
 
         uint64_t arr4[] = { 0u, 7u, 16u, 32u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr4), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr4), _EqualTo));
 
         // Add "b;\nfloat c = Ko":
         // [0] int a;\n
@@ -386,7 +377,7 @@ namespace DebugLineTracker
         assert(newRange.end.line == 2 && newRange.end.character == 12);
 
         uint64_t arr5[] = { 0u, 7u, 15u, 31u, 47u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr5), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr5), _EqualTo));
 
         /*
         *   flaot a;\n
@@ -410,8 +401,8 @@ namespace DebugLineTracker
         lineTracker.RemoveText(editRange);
 
         uint64_t arr6[] = { 0u, 10u };
-        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr6), EqualTo));
+        assert(std::equal(lineTracker.GetOffsets().begin(), lineTracker.GetOffsets().end(), std::begin(arr6), _EqualTo));
     }
-}
-
 #endif
+
+};

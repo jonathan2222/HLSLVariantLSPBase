@@ -4,6 +4,10 @@
 #include <cstring> // memcpy
 #include <cassert>
 
+#ifdef MSLP_DEBUG
+#include <string>
+#endif
+
 template<typename Type>
 struct GapBuffer
 {
@@ -440,13 +444,10 @@ protected:
 
 	Type* m_pGapScratchBuffer = nullptr; // Used for storing data that should be copied.
 	size_t m_GapCapacity = 0;
-};
 
+public:
 #ifdef MSLP_DEBUG
-
-namespace DebugGapBuffer
-{
-	void UnitTest()
+	static void UnitTest()
 	{
 		std::string bufferStr, scratchStr;
 		GapBuffer<char> gapBuffer;
@@ -479,6 +480,5 @@ namespace DebugGapBuffer
 		pData[gapBuffer.GetDataCount()] = '\0';
 		assert(strcmp(pData, "This is a large test string. For this is a great block of text.") == 0);
 	}
-}
-
 #endif
+};

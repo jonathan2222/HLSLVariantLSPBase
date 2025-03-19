@@ -3,6 +3,8 @@
 #include "GapBuffer.h"
 #include "LineTracker.h"
 
+#include <format>
+
 struct FileBuffer
 {
     FileBuffer() {}
