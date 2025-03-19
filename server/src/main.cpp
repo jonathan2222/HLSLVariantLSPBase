@@ -217,7 +217,10 @@ public:
 
         const char* pFullTex = data.pFileBuffer->CopyText();
         uint32_t fullTextSize = (uint32_t)data.pFileBuffer->GetLength();
-        data.pTree = ts_parser_parse_string(data.pParser, data.pTree, pFullTex, fullTextSize);
+        TSTree* pNewTree = ts_parser_parse_string(data.pParser, data.pTree, pFullTex, fullTextSize);
+        if (data.pTree)
+            ts_tree_delete(data.pTree);
+        data.pTree = pNewTree;
 
         {
             WriteLocker lock(*data.pTextBufferMutex);
@@ -456,6 +459,20 @@ int main()
     .add<lsp::notifications::TextDocument_DidClose>([](lsp::DidCloseTextDocumentParams&& params)
         {
             SendMessage(std::format("Closed TextDocument: {}", params.textDocument.uri.path().c_str()));
+        })
+    .add<lsp::requests::TextDocument_Diagnostic>([](const lsp::jsonrpc::MessageId& /*id*/,
+        lsp::requests::TextDocument_Diagnostic::Params&& params)
+        {
+            lsp::requests::TextDocument_Diagnostic::Result result;
+            lsp::RelatedFullDocumentDiagnosticReport relatedFullDocumentDiagnosticReport;
+
+            lsp::FullDocumentDiagnosticReport fullDocumentDiagnosticReport;
+
+            lsp::Diagnostic diagnostic;
+            fullDocumentDiagnosticReport.items.push_back(diagnostic);
+
+            result = relatedFullDocumentDiagnosticReport;
+            return result;
         })
     .add<lsp::requests::TextDocument_DocumentLink>([](const lsp::jsonrpc::MessageId& /*id*/,
         lsp::requests::TextDocument_DocumentLink::Params&& params)
