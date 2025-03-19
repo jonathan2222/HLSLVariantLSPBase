@@ -11,12 +11,14 @@
 #include <format>
 #include <variant>
 #include <shared_mutex>
+#include <filesystem>
 
 #include "GapBuffer.h"
 #include "LineTracker.h"
 #include "FileBuffer.h"
 
 #include "Logger.h"
+#include "StringUtils.h"
 
 enum class SemanticTokenType : uint32_t
 {
@@ -464,13 +466,16 @@ int main()
             TreeSitterData tsData = FetchShallowCopy(params.textDocument.uri);
 
             // Query is perfect for finding links.
-            const char* pQuerySource = "(preproc_include (string_literal (string_content) @link))";
+            //const char* pQuerySource = "(preproc_include (string_literal (string_content) @link))";
+            const char* pQuerySource = "(string_content) @link";
             uint32_t errorOffset = 0u;
             TSQueryError errorType;
             TSQuery* pQuery = ts_query_new(g_Language, pQuerySource, strlen(pQuerySource), &errorOffset, &errorType);
 
             if (pQuery)
             {
+                std::string_view thisFilePath = params.textDocument.uri.path();
+                std::vector<std::string_view> thisFileParts = Utils::Split(thisFilePath, '/');
                 tsData.BeginReading();
 
                 TSNode rootNode = ts_tree_root_node(tsData.pTree);
@@ -489,12 +494,44 @@ int main()
                     TSPoint endPoint = ts_node_end_point(capture.node);
 
                     const std::string_view stringConstant = tsData.ReadString(startByte, endByte - startByte);
+                    const std::filesystem::path stringConstantAsPath = stringConstant;
+                    // Check if the extension is valid
+                    {
+                        if (!stringConstantAsPath.has_extension())
+                        {
+                            SendLogError(std::format("Include path must have an extension!"));
+                            continue;
+                        }
+                        static const wchar_t* validExtensions[2] = { L".hlslv", L".hlsl" };
+                        bool hasValidExtension = false;
+                        std::filesystem::path ext = stringConstantAsPath.extension();
+                        const wchar_t* extension = ext.c_str();
+                        for (uint8_t i = 0u; i < 2u; ++i)
+                        {
+                            if (wcscmp(extension, validExtensions[i]) == 0)
+                                hasValidExtension = true;
+                        }
+
+                        if (!hasValidExtension)
+                        {
+                            SendLogError(std::format("Path missing valid extension!"));
+                            continue;
+                        }
+                    }
+
+                    std::string resolvedPath = Utils::GetPathFromRelativePath(std::string_view(stringConstant), params.textDocument.uri);
+
+                    if (resolvedPath.empty())
+                    {
+                        SendLogError(std::format("File does not exist!"));
+                        continue;
+                    }
 
                     lsp::DocumentLink documentLink;
                     documentLink.range.start = { .line = startPoint.row, .character = startPoint.column };
                     documentLink.range.end = { .line = endPoint.row, .character = endPoint.column };
-                    documentLink.target = lsp::FileURI(stringConstant);
-                    documentLink.tooltip = stringConstant;
+                    documentLink.target = lsp::FileURI(resolvedPath);
+                    documentLink.tooltip = resolvedPath;
                     documentLinks.push_back(documentLink);
                 }
                 tsData.EndReading();
