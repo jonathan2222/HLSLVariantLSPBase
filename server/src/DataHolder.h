@@ -9,12 +9,71 @@
 
 #include "Defines.h"
 #include "TreeSitterData.h"
+#include "hash/Hash.h"
+
+#include "MultiMap.h"
+
+struct FileKey
+{
+    std::string uriKey;
+    Utils::HashCode hashCode;
+
+    bool operator==(const FileKey& rhs) const { return uriKey == rhs.uriKey && hashCode == rhs.hashCode; }
+};
+
+template<>
+struct std::hash<FileKey>
+{
+    std::size_t operator()(const FileKey& k) const noexcept
+    {
+        return std::hash<std::string>()(k.uriKey) ^ (std::hash<Utils::HashCode>()(k.hashCode) << 1);
+    }
+};
+
+struct FileHeader
+{
+    Utils::HashCode hash; // Hash of the content
+    FileHeader() {}
+    FileHeader(FileHeader&& other) : hash(std::move(other.hash)) {}
+    bool operator==(const FileHeader& rhs) const { return hash == rhs.hash; }
+};
+
+struct FileEntry
+{
+    Utils::HashCode hash; // Hash of the active defines
+
+    FileEntry() {}
+    FileEntry(FileEntry&& other) : hash(std::move(other.hash)) {}
+    bool operator==(const FileEntry& rhs) const { return hash == rhs.hash; }
+};
+template<>
+struct std::hash<FileEntry>
+{
+    std::size_t operator()(const FileEntry& k) const noexcept
+    {
+        return std::hash<Utils::HashCode>()(k.hash);
+    }
+};
 
 struct DataHolder
 {
     inline static std::shared_mutex s_TreeSitterDataMutex;
     inline static std::unordered_map<std::string, TreeSitterData> s_URIToTreeSitterData;
+
+    inline static std::shared_mutex s_DependencyMapMutex;
+    // [include] -> parent
+    inline static std::unordered_multimap<FileKey, FileKey> s_DependencyMap;
+
+    inline static MultiMap<std::string, FileHeader, FileEntry> s_MemoryCache;
 };
+
+namespace DependencyMap
+{
+    inline void AddDependency(const FileKey& from, const FileKey& to)
+    {
+
+    }
+}
 
 namespace TreeSitterDataUser
 {

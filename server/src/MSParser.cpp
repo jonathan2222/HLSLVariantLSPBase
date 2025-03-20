@@ -42,13 +42,21 @@ void MSParser::Parse(lsp::FileURI uri, const char* pText, size_t textLength, con
 
     // TODO:
     // * Parse tree for linting, semantic tokens, and diagnostics
+    //      * Compute Hash, Save hash and uri path into a cache (multimap kinda) 
+    //              key: path
+    //              header:
+    //                  * TreeSitterData (Only one tree is needed for all path because they all are refering to the same file)
+    //                  * hashF (hash of the file content)
+    //              Each entry:
+    //                  * hashD (hash of the active defines)
+    //                  * linting results (symbol table, semantic tokens, diagnostics)
     //      * Go through the tree,
     //          * If an include is found:
     //              0. Add diagnostic about file path error etc. if any.
     //              1. Add it to the dependency map [dep] -> source (Used for updating files when some included file was edited)
     //              2. Compute hash
     //              3. Compare hash to cache
-    //              4. If different, request parsing for it the same way (Meaning calling Parse(...)).
+    //              4. If different, request parsing for it the same way (Meaning calling RequestParsing(...)).
     //              5. If same, but symbol table version is different, then add the symbol table from the include to our symbol table.
     //          * Add to the semantic types list.
     //          * Linting:
